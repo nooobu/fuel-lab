@@ -1,0 +1,978 @@
+import { useState, useRef, useMemo } from "react";
+
+// ─── Nutrition presets ─────────────────────────────────────────────────────
+const NUTRITION_PRESETS = [
+  { id: "water",   icon: "💧", name: "水",               carbs: 0,  water: 500, sodium: 0,   unit: "ml",  defaultQty: 500  },
+  { id: "sports",  icon: "🥤", name: "スポーツドリンク",  carbs: 35, water: 500, sodium: 200, unit: "ml",  defaultQty: 500  },
+  { id: "gel",     icon: "⚡", name: "エナジージェル",    carbs: 25, water: 0,   sodium: 50,  unit: "個",  defaultQty: 1    },
+  { id: "caffgel", icon: "☕", name: "カフェインジェル",  carbs: 22, water: 0,   sodium: 40,  unit: "個",  defaultQty: 1    },
+  { id: "onigiri", icon: "🍙", name: "おにぎり",          carbs: 40, water: 0,   sodium: 350, unit: "個",  defaultQty: 1    },
+  { id: "bar",     icon: "🍫", name: "エナジーバー",      carbs: 35, water: 0,   sodium: 100, unit: "本",  defaultQty: 1    },
+  { id: "salt",    icon: "🧂", name: "塩タブ",            carbs: 0,  water: 0,   sodium: 200, unit: "粒",  defaultQty: 3    },
+  { id: "cola",    icon: "🫙", name: "コーラ",            carbs: 15, water: 150, sodium: 10,  unit: "ml",  defaultQty: 150  },
+  { id: "banana",  icon: "🍌", name: "バナナ",            carbs: 27, water: 0,   sodium: 1,   unit: "本",  defaultQty: 1    },
+  { id: "manju",   icon: "🍡", name: "まんじゅう",        carbs: 35, water: 0,   sodium: 50,  unit: "個",  defaultQty: 1    },
+  { id: "chips",   icon: "🥔", name: "ポテトチップス",    carbs: 15, water: 0,   sodium: 150, unit: "g",   defaultQty: 30   },
+  { id: "anpan",   icon: "🍞", name: "あんぱん",          carbs: 45, water: 0,   sodium: 200, unit: "個",  defaultQty: 1    },
+];
+
+const SYMPTOM_OPTIONS = [
+  { id: "none",      icon: "😊", label: "問題なし",         cause: ""                            },
+  { id: "headache",  icon: "🤕", label: "頭痛",             cause: "脱水・Na不足"                 },
+  { id: "cramp",     icon: "⚡", label: "筋肉の攣り",       cause: "電解質不足（Na/K/Mg）"        },
+  { id: "gi",        icon: "😟", label: "胃の不快感",       cause: "ジェルの糖質濃度が高い"       },
+  { id: "bonk",      icon: "😵", label: "エネルギー切れ",   cause: "糖質不足"                     },
+  { id: "nausea",    icon: "🤢", label: "吐き気",           cause: "補給タイミング・水分過多"     },
+  { id: "dizziness", icon: "😵‍💫", label: "めまい",           cause: "重度の脱水またはNa不足"       },
+  { id: "fatigue",   icon: "😫", label: "想定以上の疲労",   cause: "糖質不足＋脱水の複合"         },
+];
+
+// ─── CSV parser (Garmin / Strava — summary row OR multi-lap rows) ──────────
+function parseActivityCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return null;
+
+  // Auto-detect delimiter (comma or semicolon)
+  const delim = lines[0].split(";").length > lines[0].split(",").length ? ";" : ",";
+  const headers = lines[0].split(delim).map(h => h.trim().replace(/"/g, ""));
+
+  const dataLines = lines
+    .slice(1)
+    .filter(l => l.trim().length > 3 && !l.trim().startsWith("#"));
+  if (dataLines.length === 0) return null;
+
+  // Parse one CSV row → object
+  const parseRow = (line) => {
+    const vals = line.split(delim).map(v => v.trim().replace(/^"|"$/g, ""));
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
+    return obj;
+  };
+
+  // Flexible column lookup (case-insensitive partial match)
+  const getCol = (row, ...keys) => {
+    for (const k of keys) {
+      if (row[k] !== undefined && row[k] !== "") return row[k];
+      // Case-insensitive fallback
+      const found = Object.keys(row).find(h => h.toLowerCase().includes(k.toLowerCase()));
+      if (found && row[found] !== "") return row[found];
+    }
+    return "";
+  };
+
+  // Parse "H:MM:SS", "MM:SS", or "H:MM:SS.s" → decimal minutes
+  const toMins = (s) => {
+    if (!s) return 0;
+    const parts = s.replace(/\.\d+$/, "").split(":").map(Number);
+    if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
+    if (parts.length === 2) return parts[0] + parts[1] / 60;
+    return 0;
+  };
+
+  const toFloat = (s) => parseFloat((s || "0").replace(",", ".")) || 0;
+  const toInt   = (s) => parseInt((s || "0").replace(/[^0-9]/g, "")) || 0;
+
+  // ── Single-row (activity summary) ──
+  if (dataLines.length === 1) {
+    const row = parseRow(dataLines[0]);
+    const dist        = toFloat(getCol(row, "Distance", "距離"));
+    const durationMins = toMins(getCol(row, "Time", "Duration", "Elapsed Time", "タイム"));
+    const ascent      = toInt(getCol(row, "Total Ascent", "Elevation Gain", "累計上昇高度", "Ascent"));
+    const avgHR       = toInt(getCol(row, "Avg HR", "Average HR", "Average Heart Rate", "平均心拍数"));
+    const maxHR       = toInt(getCol(row, "Max HR", "Max Heart Rate", "最高心拍数"));
+    const calories    = toInt(getCol(row, "Calories", "カロリー"));
+    const title       = getCol(row, "Title", "Activity Name", "アクティビティ名", "Activity Type") || "トレーニングラン";
+    const date        = getCol(row, "Date", "Start Time", "日付");
+    if (dist === 0 && durationMins === 0) return null;
+    return { title, date, dist, durationMins: Math.round(durationMins), ascent, avgHR, maxHR, calories };
+  }
+
+  // ── Multi-row (lap / split data) ──
+  // Garmin lap CSVs include a "概要" (summary) footer row with authoritative totals.
+  // Detect it first — if present, use it directly to avoid double-counting laps.
+  const SUMMARY_KEYWORDS = ["概要", "summary", "合計", "total"];
+  const isSummaryRow = (line) => {
+    const firstVal = line.split(delim)[0].trim().replace(/"/g, "").toLowerCase();
+    return SUMMARY_KEYWORDS.some(k => firstVal === k);
+  };
+
+  const summaryLine = dataLines.find(isSummaryRow);
+
+  if (summaryLine) {
+    // Use the summary row directly as the authoritative result
+    const row = parseRow(summaryLine);
+    const dist        = toFloat(getCol(row, "Distance", "距離"));
+    const durationMins = toMins(getCol(row, "Time", "Moving Time", "Duration", "タイム", "累積時間"));
+    const ascent      = toInt(getCol(row, "Elevation Gain", "Ascent", "Total Ascent", "累計上昇高度", "総上昇量"));
+    const avgHR       = toInt(getCol(row, "Avg HR", "Average HR", "Average Heart Rate", "平均心拍数"));
+    const maxHR       = toInt(getCol(row, "Max HR", "Max Heart Rate", "最高心拍数", "最大心拍数"));
+    const calories    = toInt(getCol(row, "Calories", "カロリー"));
+    if (dist === 0 && durationMins === 0) return null;
+    return {
+      title: "トレーニングラン",
+      date: "",
+      dist: Math.round(dist * 100) / 100,
+      durationMins: Math.round(durationMins),
+      ascent,
+      avgHR,
+      maxHR,
+      calories,
+    };
+  }
+
+  // No summary row found → aggregate lap rows (excluding any summary-like rows)
+  let totalDist = 0, totalMins = 0, totalAscent = 0, totalCal = 0;
+  let hrSum = 0, hrCount = 0, maxHR = 0;
+  let title = "", date = "";
+
+  dataLines.filter(l => !isSummaryRow(l)).forEach(line => {
+    const row = parseRow(line);
+    totalDist   += toFloat(getCol(row, "Distance", "距離"));
+    totalMins   += toMins(getCol(row, "Time", "Moving Time", "Duration", "タイム", "Lap Time"));
+    totalAscent += toInt(getCol(row, "Elevation Gain", "Ascent", "Total Ascent", "累計上昇高度", "総上昇量"));
+    totalCal    += toInt(getCol(row, "Calories", "カロリー"));
+
+    const hr  = toInt(getCol(row, "Avg HR", "Average HR", "Average Heart Rate", "平均心拍数"));
+    const mhr = toInt(getCol(row, "Max HR", "Max Heart Rate", "最高心拍数", "最大心拍数"));
+    if (hr > 0)  { hrSum += hr; hrCount++; }
+    if (mhr > maxHR) maxHR = mhr;
+
+    if (!title) title = getCol(row, "Title", "Name", "Activity Type", "Activity Name") || "";
+    if (!date)  date  = getCol(row, "Date", "Start Time", "日付") || "";
+  });
+
+  if (totalDist === 0 && totalMins === 0) return null;
+  return {
+    title: title || "トレーニングラン",
+    date,
+    dist: Math.round(totalDist * 100) / 100,
+    durationMins: Math.round(totalMins),
+    ascent: totalAscent,
+    avgHR: hrCount > 0 ? Math.round(hrSum / hrCount) : 0,
+    maxHR,
+    calories: totalCal,
+  };
+}
+
+// ─── Analysis engine ───────────────────────────────────────────────────────
+function computeAnalysis(runData, nutritionItems, symptoms, runType) {
+  const hours = runData.durationMins / 60;
+  const isTrail = runType === "trail";
+
+  let totalCarbs = 0, totalWater = 0, totalSodium = 0;
+  nutritionItems.forEach(item => {
+    const p = NUTRITION_PRESETS.find(x => x.id === item.id);
+    if (!p) return;
+    const mult = p.unit === "ml" ? item.qty / p.defaultQty : item.qty;
+    // Use user-edited values if present, fallback to preset defaults
+    totalCarbs  += (item.carbs  ?? p.carbs)  * mult;
+    totalWater  += (item.water  ?? p.water)  * mult;
+    totalSodium += (item.sodium ?? p.sodium) * mult;
+  });
+
+  const recCarbsH  = 60;
+  const recWaterH  = isTrail ? 500 : 420;
+  const recSodiumH = isTrail ? 650 : 500;
+  const recCarbs  = recCarbsH  * hours;
+  const recWater  = recWaterH  * hours;
+  const recSodium = recSodiumH * hours;
+
+  const carbScore   = nutritionItems.length === 0 ? 0 : Math.min(100, Math.round((totalCarbs  / recCarbs)  * 100));
+  const waterScore  = nutritionItems.length === 0 ? 0 : Math.min(100, Math.round((totalWater  / recWater)  * 100));
+  const sodiumScore = nutritionItems.length === 0 ? 0 : Math.min(100, Math.round((totalSodium / recSodium) * 100));
+  const overallScore = Math.round((carbScore + waterScore + sodiumScore) / 3);
+
+  const has = (id) => symptoms.some(s => s.id === id);
+  const insights = [];
+
+  if (waterScore < 75 || has("headache") || has("dizziness")) insights.push({
+    type: "warn", icon: "💧", title: "水分が不足していました",
+    detail: `摂取 ${Math.round(totalWater)}ml ／ 推奨 ${Math.round(recWater)}ml（${recWaterH}ml/時間）`,
+    fix: "20〜30分ごとに150〜200mlをこまめに。のどが渇く前に飲む習慣を。",
+  });
+
+  if (carbScore < 75 || has("bonk") || has("fatigue")) insights.push({
+    type: "warn", icon: "⚡", title: "糖質が不足していました",
+    detail: `摂取 ${Math.round(totalCarbs)}g ／ 推奨 ${Math.round(recCarbs)}g（${recCarbsH}g/時間）`,
+    fix: "45〜60分ごとにジェル1本（約25g）または固形物で補充を。",
+  });
+
+  if (sodiumScore < 75 || has("cramp") || has("headache")) insights.push({
+    type: "warn", icon: "🧂", title: "ナトリウムが不足していました",
+    detail: `摂取 ${Math.round(totalSodium)}mg ／ 推奨 ${Math.round(recSodium)}mg（${recSodiumH}mg/時間）`,
+    fix: "30分ごとに塩タブ1〜2粒。スポーツドリンクと水を交互に飲むのも有効。",
+  });
+
+  if (has("cramp")) insights.push({
+    type: "info", icon: "💊", title: "筋肉の攣りは電解質不足のシグナル",
+    detail: "Na・K・Mgのバランスが乱れると攣りやすくなります。",
+    fix: "Mg含有の電解質タブレットや、バナナ・ドライフルーツを補給に加えてみては。",
+  });
+
+  if (has("gi")) insights.push({
+    type: "info", icon: "😟", title: "胃腸の不快感は補給の「密度」が原因かも",
+    detail: "高糖度ジェルを短時間に連続摂取すると胃に負担がかかります。",
+    fix: "ジェルは必ず水と一緒に。固形物・液体・ジェルを時間軸で分散させましょう。",
+  });
+
+  if (insights.length === 0 || (carbScore >= 80 && waterScore >= 80 && sodiumScore >= 80)) insights.push({
+    type: "good", icon: "✅", title: "補給バランスは良好です！",
+    detail: "三大栄養素すべてが推奨範囲内。素晴らしい。",
+    fix: "このパターンをベースに、次のレース計画を立てましょう。",
+  });
+
+  return { totalCarbs: Math.round(totalCarbs), totalWater: Math.round(totalWater), totalSodium: Math.round(totalSodium), recCarbs: Math.round(recCarbs), recWater: Math.round(recWater), recSodium: Math.round(recSodium), carbScore, waterScore, sodiumScore, overallScore, insights };
+}
+
+// ─── Shared styles ─────────────────────────────────────────────────────────
+const inputStyle = {
+  padding: "10px 12px", borderRadius: "10px", border: "1px solid rgba(148,163,184,0.15)",
+  background: "rgba(15,23,42,0.8)", color: "#e2e8f0", fontSize: "13px",
+  outline: "none", fontFamily: "inherit", width: "100%",
+};
+
+const cardBase = {
+  borderRadius: "16px", padding: "16px",
+  background: "rgba(30,41,59,0.6)", border: "1px solid rgba(148,163,184,0.1)",
+  backdropFilter: "blur(10px)",
+};
+
+function fmt(m) {
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+// ─── Main App ──────────────────────────────────────────────────────────────
+export default function FuelLabOnboarding() {
+  const [step, setStep] = useState(0);
+  const [runType, setRunType] = useState(null);       // 'road' | 'trail' | 'both'
+  const [profile, setProfile] = useState({ name: "", age: 30, height: 170, weight: 65 });
+  const [runData, setRunData] = useState(null);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualRun, setManualRun] = useState({ title: "", dist: 0, hours: 0, mins: 0, ascent: 0, avgHR: 0 });
+  const [isParsingCSV, setIsParsingCSV] = useState(false);
+  const [csvError, setCSVError] = useState(null);
+  const [nutritionItems, setNutritionItems] = useState([]);
+  const [feeling, setFeeling] = useState(3);
+  const [symptoms, setSymptoms] = useState([]);
+  const [analysis, setAnalysis] = useState(null);
+  const [onboardingDone, setOnboardingDone] = useState(false);
+  const csvInputRef = useRef(null);
+
+  const TOTAL_STEPS = 6; // 1 welcome + 5 content steps
+
+  function handleCSV(file) {
+    if (!file) return;
+    setIsParsingCSV(true);
+    setCSVError(null);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const result = parseActivityCSV(e.target.result);
+      if (result) { setRunData(result); setCSVError(null); }
+      else setCSVError("CSVを読み取れませんでした。Garmin Activities CSVか手動入力をお試しください。");
+      setIsParsingCSV(false);
+    };
+    reader.readAsText(file, "UTF-8");
+  }
+
+  function toggleNutrition(id) {
+    setNutritionItems(prev => {
+      const p = NUTRITION_PRESETS.find(x => x.id === id);
+      if (prev.find(i => i.id === id)) return prev.filter(i => i.id !== id);
+      return [...prev, { id, qty: p.defaultQty, carbs: p.carbs, sodium: p.sodium, water: p.water }];
+    });
+  }
+
+  function updateQty(id, qty) {
+    setNutritionItems(prev => prev.map(i => i.id === id ? { ...i, qty } : i));
+  }
+
+  function updateItemNutrition(id, field, raw) {
+    const val = parseInt(raw, 10);
+    if (isNaN(val) || val < 0) return;
+    setNutritionItems(prev => prev.map(i => i.id === id ? { ...i, [field]: val } : i));
+  }
+
+  function toggleSymptom(id) {
+    setSymptoms(prev => {
+      if (id === "none") return [{ id: "none", km: 0 }];
+      const filtered = prev.filter(s => s.id !== "none");
+      if (filtered.find(s => s.id === id)) return filtered.filter(s => s.id !== id);
+      return [...filtered, { id, km: 0 }];
+    });
+  }
+
+  function updateSymptomKm(id, km) {
+    setSymptoms(prev => prev.map(s => s.id === id ? { ...s, km } : s));
+  }
+
+  function effectiveRunData() {
+    if (runData) return runData;
+    if (manualMode) {
+      const durationMins = manualRun.hours * 60 + manualRun.mins;
+      return { title: manualRun.title || "トレーニングラン", date: "", dist: manualRun.dist, durationMins, ascent: manualRun.ascent, avgHR: manualRun.avgHR, maxHR: 0, calories: 0 };
+    }
+    return null;
+  }
+
+  function handleToAnalysis() {
+    const rd = effectiveRunData();
+    if (rd) setAnalysis(computeAnalysis(rd, nutritionItems, symptoms, runType));
+    setStep(6);
+  }
+
+  // Step guards
+  const canProceed = [
+    true,                                          // 0 welcome
+    runType !== null,                              // 1 run type
+    profile.name.trim().length > 0,               // 2 profile
+    effectiveRunData() !== null,                   // 3 import
+    true,                                          // 4 nutrition (optional)
+    true,                                          // 5 symptoms (optional)
+  ];
+
+  if (onboardingDone) return <MainAppShell profile={profile} runType={runType} analysis={analysis} runData={effectiveRunData()} />;
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(165deg, #0a0e17 0%, #111827 40%, #1a1a2e 100%)",
+      color: "#e2e8f0",
+      fontFamily: "'Noto Sans JP', 'SF Pro Display', -apple-system, sans-serif",
+      position: "relative", overflow: "hidden",
+    }}>
+      {/* Ambient glow */}
+      <div style={{ position: "fixed", top: "-20%", right: "-10%", width: "50vw", height: "50vw", background: "radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)", pointerEvents: "none" }}/>
+      <div style={{ position: "fixed", bottom: "-20%", left: "-10%", width: "40vw", height: "40vw", background: "radial-gradient(circle, rgba(34,197,94,0.06) 0%, transparent 70%)", pointerEvents: "none" }}/>
+
+      <div style={{ maxWidth: "480px", margin: "0 auto", padding: "0 0 80px", position: "relative", zIndex: 1 }}>
+
+        {/* ── Header ── */}
+        {step > 0 && (
+          <div style={{ padding: "20px 20px 0", display: "flex", alignItems: "center", gap: "12px" }}>
+            <button onClick={() => setStep(s => Math.max(0, s - 1))} style={{
+              width: "32px", height: "32px", borderRadius: "8px", border: "none",
+              background: "rgba(30,41,59,0.6)", color: "#94a3b8", cursor: "pointer", fontSize: "16px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>←</button>
+            <div style={{ flex: 1, height: "4px", background: "rgba(30,41,59,0.8)", borderRadius: "2px", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${(step / TOTAL_STEPS) * 100}%`, background: "linear-gradient(90deg, #22c55e, #6366f1)", borderRadius: "2px", transition: "width 0.4s ease" }}/>
+            </div>
+            <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "600", minWidth: "32px", textAlign: "right" }}>{step}/{TOTAL_STEPS}</span>
+          </div>
+        )}
+
+        {/* ── Step 0: Welcome ── */}
+        {step === 0 && (
+          <div style={{ padding: "60px 24px 24px", textAlign: "center" }}>
+            <div style={{
+              width: "72px", height: "72px", borderRadius: "20px", margin: "0 auto 20px",
+              background: "linear-gradient(135deg, #22c55e, #059669)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "36px", boxShadow: "0 8px 32px rgba(34,197,94,0.35)",
+            }}>⚡</div>
+            <div style={{ fontSize: "28px", fontWeight: "900", letterSpacing: "-1px", color: "#f8fafc", marginBottom: "8px" }}>FUEL LAB</div>
+            <div style={{ fontSize: "13px", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "32px" }}>Trail & Road Nutrition Planner</div>
+            <p style={{ fontSize: "14px", color: "#94a3b8", lineHeight: 1.8, marginBottom: "40px", padding: "0 8px" }}>
+              あなたの走りに合わせた補給プランを作成します。<br/>
+              直近のランのデータをもとに、<strong style={{ color: "#e2e8f0" }}>何が足りていたか・いなかったか</strong>を分析し、<br/>
+              パーソナライズされたプランを提案します。
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 12px" }}>
+              {[
+                { icon: "🏃", text: "ランタイプとプロフィール登録" },
+                { icon: "📊", text: "過去のランデータをインポート" },
+                { icon: "🔬", text: "補給と体調を分析・診断" },
+                { icon: "📋", text: "あなた専用プランを作成" },
+              ].map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "12px", background: "rgba(30,41,59,0.4)", border: "1px solid rgba(148,163,184,0.06)" }}>
+                  <span style={{ fontSize: "20px" }}>{item.icon}</span>
+                  <span style={{ fontSize: "13px", color: "#94a3b8" }}>{item.text}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setStep(1)} style={{
+              marginTop: "36px", width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+              background: "linear-gradient(135deg, #22c55e, #059669)",
+              color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+              boxShadow: "0 8px 24px rgba(34,197,94,0.35)",
+            }}>はじめる →</button>
+            <p style={{ fontSize: "10px", color: "#334155", marginTop: "16px" }}>約3〜5分で完了します</p>
+          </div>
+        )}
+
+        {/* ── Step 1: Run Type ── */}
+        {step === 1 && (
+          <div style={{ padding: "28px 20px" }}>
+            <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>STEP 1</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>メインのランタイプは？</div>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "28px", lineHeight: 1.6 }}>補給の推奨量・内容はランタイプによって大きく異なります。</p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {[
+                { id: "trail", icon: "🏔️", title: "トレイルラン", sub: "山岳・未舗装路メイン / 電解質・固形物重視" },
+                { id: "road",  icon: "🏙️", title: "ロードラン",   sub: "舗装路・レース・ファンラン / ジェル・ドリンク中心" },
+                { id: "both",  icon: "🔄", title: "両方やります", sub: "シーズンによって使い分け" },
+              ].map(opt => (
+                <div key={opt.id} onClick={() => setRunType(opt.id)} style={{
+                  ...cardBase,
+                  cursor: "pointer", padding: "20px",
+                  border: `1px solid ${runType === opt.id ? "rgba(34,197,94,0.6)" : "rgba(148,163,184,0.1)"}`,
+                  background: runType === opt.id ? "rgba(34,197,94,0.08)" : "rgba(30,41,59,0.6)",
+                  transition: "all 0.2s",
+                  display: "flex", alignItems: "center", gap: "16px",
+                }}>
+                  <div style={{ fontSize: "36px", lineHeight: 1 }}>{opt.icon}</div>
+                  <div>
+                    <div style={{ fontSize: "15px", fontWeight: "700", color: runType === opt.id ? "#4ade80" : "#f1f5f9" }}>{opt.title}</div>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>{opt.sub}</div>
+                  </div>
+                  {runType === opt.id && <div style={{ marginLeft: "auto", width: "20px", height: "20px", borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px" }}>✓</div>}
+                </div>
+              ))}
+            </div>
+
+            <NextButton disabled={!canProceed[1]} onClick={() => setStep(2)} />
+          </div>
+        )}
+
+        {/* ── Step 2: Profile ── */}
+        {step === 2 && (
+          <div style={{ padding: "28px 20px" }}>
+            <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>STEP 2</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>ランナープロフィール</div>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "28px", lineHeight: 1.6 }}>体重・身長は発汗量・消費カロリーの計算に使用します。</p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "6px" }}>
+                ニックネーム / 名前
+                <input value={profile.name} onChange={e => setProfile(p => ({...p, name: e.target.value}))}
+                  placeholder="田中 走" style={inputStyle} />
+              </label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  年齢
+                  <input type="number" value={profile.age} onChange={e => setProfile(p => ({...p, age: +e.target.value}))}
+                    style={inputStyle} min={10} max={100} />
+                </label>
+                <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  身長 (cm)
+                  <input type="number" value={profile.height} onChange={e => setProfile(p => ({...p, height: +e.target.value}))}
+                    style={inputStyle} min={100} max={220} />
+                </label>
+              </div>
+
+              <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "6px" }}>
+                体重 (kg)
+                <div style={{ position: "relative" }}>
+                  <input type="range" min={35} max={120} value={profile.weight}
+                    onChange={e => setProfile(p => ({...p, weight: +e.target.value}))}
+                    style={{ width: "100%", accentColor: "#22c55e", cursor: "pointer" }} />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                    <span style={{ fontSize: "10px", color: "#475569" }}>35kg</span>
+                    <span style={{ fontSize: "22px", fontWeight: "800", color: "#4ade80" }}>{profile.weight}<span style={{ fontSize: "13px", fontWeight: "500", color: "#64748b" }}>kg</span></span>
+                    <span style={{ fontSize: "10px", color: "#475569" }}>120kg</span>
+                  </div>
+                </div>
+              </label>
+
+              <div style={{ padding: "12px 14px", borderRadius: "12px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)", marginTop: "4px" }}>
+                <div style={{ fontSize: "10px", color: "#64748b", marginBottom: "4px" }}>フルマラソンの推定消費カロリー</div>
+                <div style={{ fontSize: "20px", fontWeight: "800", color: "#c7d2fe" }}>
+                  {Math.round(profile.weight * 42.195 * 1.04).toLocaleString()} kcal
+                </div>
+                <div style={{ fontSize: "10px", color: "#475569", marginTop: "2px" }}>体重 × 距離 × 1.04係数</div>
+              </div>
+            </div>
+
+            <NextButton disabled={!canProceed[2]} onClick={() => setStep(3)} />
+          </div>
+        )}
+
+        {/* ── Step 3: Import run data ── */}
+        {step === 3 && (
+          <div style={{ padding: "28px 20px" }}>
+            <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>STEP 3</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>直近のランデータ</div>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px", lineHeight: 1.6 }}>
+              長めのラン（1時間以上）のデータが理想です。<br/>
+              GarminのActivities CSVをそのままアップロードできます。
+            </p>
+
+            {/* Mode toggle */}
+            <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
+              {[{ id: false, label: "📁 CSVインポート" }, { id: true, label: "✏️ 手動入力" }].map(m => (
+                <button key={String(m.id)} onClick={() => { setManualMode(m.id); setRunData(null); setCSVError(null); }} style={{
+                  flex: 1, padding: "8px", borderRadius: "10px", border: "none", cursor: "pointer",
+                  background: manualMode === m.id ? "rgba(99,102,241,0.2)" : "rgba(30,41,59,0.5)",
+                  color: manualMode === m.id ? "#a5b4fc" : "#64748b",
+                  fontSize: "12px", fontWeight: "600",
+                  border: `1px solid ${manualMode === m.id ? "rgba(99,102,241,0.3)" : "rgba(148,163,184,0.08)"}`,
+                }}>{m.label}</button>
+              ))}
+            </div>
+
+            {!manualMode ? (
+              <>
+                {!runData ? (
+                  <div
+                    onClick={() => csvInputRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); handleCSV(e.dataTransfer.files[0]); }}
+                    style={{
+                      border: "2px dashed rgba(148,163,184,0.2)", borderRadius: "16px",
+                      padding: "40px 20px", textAlign: "center", cursor: "pointer",
+                      background: "rgba(30,41,59,0.3)", transition: "all 0.2s",
+                    }}
+                  >
+                    <div style={{ fontSize: "40px", marginBottom: "10px" }}>📊</div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: "#f1f5f9", marginBottom: "4px" }}>CSVをドロップ</div>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>またはクリックして選択</div>
+                    <div style={{ fontSize: "10px", color: "#475569", lineHeight: 1.6 }}>
+                      Garmin Connect → アクティビティ → エクスポート → CSV<br/>
+                      Strava の Activities.csv にも対応
+                    </div>
+                    <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }}
+                      onChange={e => handleCSV(e.target.files[0])} />
+                  </div>
+                ) : (
+                  <RunDataCard data={runData} onClear={() => setRunData(null)} />
+                )}
+                {isParsingCSV && <div style={{ textAlign: "center", marginTop: "12px", color: "#22c55e", fontSize: "13px" }}>📡 読み込み中...</div>}
+                {csvError && <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: "12px", color: "#f87171" }}>{csvError}</div>}
+              </>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+                  アクティビティ名
+                  <input value={manualRun.title} onChange={e => setManualRun(r => ({...r, title: e.target.value}))}
+                    placeholder="丹沢ロング" style={inputStyle} />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+                    距離 (km)
+                    <input type="number" value={manualRun.dist || ""} onChange={e => setManualRun(r => ({...r, dist: +e.target.value}))}
+                      placeholder="29.8" style={inputStyle} step="0.1" min={0} />
+                  </label>
+                  <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+                    累積標高 (m)
+                    <input type="number" value={manualRun.ascent || ""} onChange={e => setManualRun(r => ({...r, ascent: +e.target.value}))}
+                      placeholder="1577" style={inputStyle} min={0} />
+                  </label>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+                    タイム（時間）
+                    <input type="number" value={manualRun.hours || ""} onChange={e => setManualRun(r => ({...r, hours: +e.target.value}))}
+                      placeholder="5" style={inputStyle} min={0} max={24} />
+                  </label>
+                  <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+                    タイム（分）
+                    <input type="number" value={manualRun.mins || ""} onChange={e => setManualRun(r => ({...r, mins: +e.target.value}))}
+                      placeholder="15" style={inputStyle} min={0} max={59} />
+                  </label>
+                </div>
+                <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+                  平均心拍数 (bpm)（任意）
+                  <input type="number" value={manualRun.avgHR || ""} onChange={e => setManualRun(r => ({...r, avgHR: +e.target.value}))}
+                    placeholder="155" style={inputStyle} min={0} max={220} />
+                </label>
+                {manualRun.dist > 0 && (manualRun.hours > 0 || manualRun.mins > 0) && (
+                  <RunDataCard data={{ title: manualRun.title || "トレーニングラン", date: "", dist: manualRun.dist, durationMins: manualRun.hours * 60 + manualRun.mins, ascent: manualRun.ascent, avgHR: manualRun.avgHR }} />
+                )}
+              </div>
+            )}
+
+            <NextButton disabled={!canProceed[3]} onClick={() => setStep(4)} label="次へ（補給記録）" />
+          </div>
+        )}
+
+        {/* ── Step 4: Nutrition ── */}
+        {step === 4 && (
+          <div style={{ padding: "28px 20px" }}>
+            <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>STEP 4</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>そのランの補給は？</div>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "6px", lineHeight: 1.6 }}>補給したものを全て選んでください。量も大まかでOKです。</p>
+
+            {/* Context bar */}
+            {effectiveRunData() && (
+              <div style={{ padding: "10px 14px", borderRadius: "10px", background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.06)", marginBottom: "20px", display: "flex", gap: "16px", fontSize: "11px", color: "#64748b" }}>
+                <span>📍 {effectiveRunData().dist.toFixed(1)}km</span>
+                <span>⏱ {fmt(effectiveRunData().durationMins)}</span>
+                {effectiveRunData().ascent > 0 && <span>↑{effectiveRunData().ascent}m</span>}
+              </div>
+            )}
+
+            {/* Item grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "20px" }}>
+              {NUTRITION_PRESETS.map(preset => {
+                const selected = nutritionItems.find(i => i.id === preset.id);
+                const qtyStep = preset.unit === "ml" ? (preset.defaultQty >= 150 ? 100 : 50) : 1;
+                return (
+                  <div key={preset.id} onClick={() => toggleNutrition(preset.id)} style={{
+                    padding: "12px 10px", borderRadius: "14px", cursor: "pointer",
+                    background: selected ? "rgba(34,197,94,0.1)" : "rgba(30,41,59,0.5)",
+                    border: `1px solid ${selected ? "rgba(34,197,94,0.4)" : "rgba(148,163,184,0.08)"}`,
+                    transition: "all 0.2s",
+                  }}>
+                    {/* Header row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: selected ? "8px" : "0" }}>
+                      <span style={{ fontSize: "20px" }}>{preset.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "14px", fontWeight: "700", color: selected ? "#4ade80" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preset.name}</div>
+                        {/* Subtitle — WCAG AA: #94a3b8 on dark bg ≈ 6.3:1 */}
+                        <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                          {selected
+                            ? `糖${selected.carbs}g Na${selected.sodium}mg`
+                            : `${preset.carbs > 0 ? `糖${preset.carbs}g ` : ""}${preset.sodium > 0 ? `Na${preset.sodium}mg` : preset.carbs === 0 ? "水分補給" : ""}`
+                          }
+                        </div>
+                      </div>
+                      {selected && <div style={{ width: "15px", height: "15px", borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "8px", flexShrink: 0 }}>✓</div>}
+                    </div>
+
+                    {/* Selected: qty + editable nutrition */}
+                    {selected && (
+                      <div onClick={e => e.stopPropagation()}>
+                        {/* Qty row */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
+                          <button onClick={() => updateQty(preset.id, Math.max(0, selected.qty - qtyStep))}
+                            style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(148,163,184,0.15)", color: "#94a3b8", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>−</button>
+                          <span style={{ fontSize: "13px", fontWeight: "700", color: "#f1f5f9", flex: 1, textAlign: "center" }}>{selected.qty}{preset.unit}</span>
+                          <button onClick={() => updateQty(preset.id, selected.qty + qtyStep)}
+                            style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(34,197,94,0.15)", color: "#4ade80", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>＋</button>
+                        </div>
+                        {/* Editable nutrition row */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" }}>
+                          <label style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <span style={{ fontSize: "9px", color: "#94a3b8", fontWeight: "600" }}>糖質 (g/{preset.unit === "ml" ? `${preset.defaultQty}ml` : preset.unit})</span>
+                            <input
+                              type="number" min="0" max="999" value={selected.carbs}
+                              onChange={e => updateItemNutrition(preset.id, "carbs", e.target.value)}
+                              style={{ width: "100%", padding: "4px 6px", borderRadius: "6px", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "12px", fontWeight: "700", outline: "none", boxSizing: "border-box" }}
+                            />
+                          </label>
+                          <label style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <span style={{ fontSize: "9px", color: "#94a3b8", fontWeight: "600" }}>Na (mg/{preset.unit === "ml" ? `${preset.defaultQty}ml` : preset.unit})</span>
+                            <input
+                              type="number" min="0" max="9999" value={selected.sodium}
+                              onChange={e => updateItemNutrition(preset.id, "sodium", e.target.value)}
+                              style={{ width: "100%", padding: "4px 6px", borderRadius: "6px", border: "1px solid rgba(196,181,253,0.3)", background: "rgba(196,181,253,0.08)", color: "#c4b5fd", fontSize: "12px", fontWeight: "700", outline: "none", boxSizing: "border-box" }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Live total */}
+            {nutritionItems.length > 0 && <NutritionTotals items={nutritionItems} />}
+
+            <NextButton onClick={() => setStep(5)} label="次へ（体調記録）" />
+          </div>
+        )}
+
+        {/* ── Step 5: Symptoms ── */}
+        {step === 5 && (
+          <div style={{ padding: "28px 20px" }}>
+            <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>STEP 5</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>そのランの体調は？</div>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px", lineHeight: 1.6 }}>気になった症状があれば選んでください。何キロ地点かも教えてください。</p>
+
+            {/* Feeling score */}
+            <div style={{ ...cardBase, marginBottom: "20px", padding: "16px 20px" }}>
+              <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "10px" }}>全体的な体調</div>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                {[
+                  { val: 1, icon: "😫", label: "ひどかった" },
+                  { val: 2, icon: "😕", label: "きつかった" },
+                  { val: 3, icon: "😐", label: "普通" },
+                  { val: 4, icon: "😊", label: "良かった" },
+                  { val: 5, icon: "🤩", label: "最高！" },
+                ].map(f => (
+                  <button key={f.val} onClick={() => setFeeling(f.val)} style={{
+                    flex: 1, padding: "10px 4px", borderRadius: "10px", border: "none", cursor: "pointer",
+                    background: feeling === f.val ? "rgba(34,197,94,0.15)" : "rgba(30,41,59,0.4)",
+                    border: `1px solid ${feeling === f.val ? "rgba(34,197,94,0.4)" : "rgba(148,163,184,0.06)"}`,
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
+                  }}>
+                    <span style={{ fontSize: "22px" }}>{f.icon}</span>
+                    <span style={{ fontSize: "9px", color: feeling === f.val ? "#4ade80" : "#475569" }}>{f.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Symptom list */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {SYMPTOM_OPTIONS.map(opt => {
+                const selected = symptoms.find(s => s.id === opt.id);
+                return (
+                  <div key={opt.id}>
+                    <div onClick={() => toggleSymptom(opt.id)} style={{
+                      display: "flex", alignItems: "center", gap: "12px",
+                      padding: "12px 14px", borderRadius: "12px", cursor: "pointer",
+                      background: selected ? (opt.id === "none" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)") : "rgba(30,41,59,0.4)",
+                      border: `1px solid ${selected ? (opt.id === "none" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.2)") : "rgba(148,163,184,0.06)"}`,
+                      transition: "all 0.15s",
+                    }}>
+                      <span style={{ fontSize: "22px" }}>{opt.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: "13px", fontWeight: "600", color: "#e2e8f0" }}>{opt.label}</div>
+                        {opt.cause && <div style={{ fontSize: "10px", color: "#64748b" }}>考えられる原因: {opt.cause}</div>}
+                      </div>
+                      <div style={{
+                        width: "20px", height: "20px", borderRadius: "6px", border: "2px solid",
+                        borderColor: selected ? (opt.id === "none" ? "#22c55e" : "#ef4444") : "rgba(148,163,184,0.2)",
+                        background: selected ? (opt.id === "none" ? "#22c55e" : "#ef4444") : "transparent",
+                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px",
+                      }}>{selected ? "✓" : ""}</div>
+                    </div>
+                    {/* km input for non-none symptoms */}
+                    {selected && opt.id !== "none" && (
+                      <div style={{ paddingLeft: "48px", paddingTop: "6px" }} onClick={e => e.stopPropagation()}>
+                        <label style={{ fontSize: "10px", color: "#64748b", display: "flex", alignItems: "center", gap: "8px" }}>
+                          何km地点で？
+                          <input type="number" value={selected.km || ""} onChange={e => updateSymptomKm(opt.id, +e.target.value)}
+                            placeholder="10" min={0} style={{ ...inputStyle, width: "80px", padding: "6px 10px", fontSize: "13px" }} />
+                          <span style={{ fontSize: "11px", color: "#64748b" }}>km</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button onClick={handleToAnalysis} style={{
+              marginTop: "28px", width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+              background: "linear-gradient(135deg, #22c55e, #059669)",
+              color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+              boxShadow: "0 8px 24px rgba(34,197,94,0.3)",
+            }}>分析・診断する 🔬</button>
+          </div>
+        )}
+
+        {/* ── Step 6: Analysis ── */}
+        {step === 6 && analysis && (
+          <AnalysisStep
+            analysis={analysis}
+            profile={profile}
+            runType={runType}
+            runData={effectiveRunData()}
+            symptoms={symptoms}
+            feeling={feeling}
+            onDone={() => setOnboardingDone(true)}
+          />
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────
+
+function NextButton({ onClick, disabled = false, label = "次へ →" }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      marginTop: "28px", width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+      background: disabled ? "rgba(30,41,59,0.6)" : "linear-gradient(135deg, #22c55e, #059669)",
+      color: disabled ? "#475569" : "#fff", fontSize: "15px", fontWeight: "800", cursor: disabled ? "not-allowed" : "pointer",
+      boxShadow: disabled ? "none" : "0 8px 24px rgba(34,197,94,0.3)",
+      transition: "all 0.2s",
+    }}>{label}</button>
+  );
+}
+
+function RunDataCard({ data, onClear }) {
+  return (
+    <div style={{
+      padding: "16px", borderRadius: "16px", marginTop: "4px",
+      background: "linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.06))",
+      border: "1px solid rgba(34,197,94,0.25)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
+        <div style={{ fontSize: "14px", fontWeight: "800", color: "#f1f5f9" }}>✅ {data.title}</div>
+        {onClear && <button onClick={onClear} style={{ fontSize: "10px", color: "#64748b", background: "none", border: "none", cursor: "pointer" }}>変更</button>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+        {[
+          { label: "距離",    val: `${data.dist.toFixed(1)}km` },
+          { label: "タイム",   val: fmt(data.durationMins) },
+          { label: "累積標高", val: data.ascent > 0 ? `${data.ascent}m` : "—" },
+          { label: "平均心拍", val: data.avgHR > 0 ? `${data.avgHR}bpm` : "—" },
+        ].map((m, i) => (
+          <div key={i} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: "13px", fontWeight: "800", color: "#f1f5f9" }}>{m.val}</div>
+            <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>{m.label}</div>
+          </div>
+        ))}
+      </div>
+      {data.date && <div style={{ fontSize: "10px", color: "#475569", marginTop: "8px" }}>📅 {data.date}</div>}
+    </div>
+  );
+}
+
+function NutritionTotals({ items }) {
+  let carbs = 0, water = 0, sodium = 0;
+  items.forEach(item => {
+    const p = NUTRITION_PRESETS.find(x => x.id === item.id);
+    if (!p) return;
+    const mult = p.unit === "ml" ? item.qty / p.defaultQty : item.qty;
+    carbs  += (item.carbs  ?? p.carbs)  * mult;
+    water  += (item.water  ?? p.water)  * mult;
+    sodium += (item.sodium ?? p.sodium) * mult;
+  });
+  return (
+    <div style={{ padding: "12px 14px", borderRadius: "12px", background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.08)", marginBottom: "4px" }}>
+      <div style={{ fontSize: "10px", color: "#64748b", marginBottom: "8px" }}>合計摂取量（このランの合計）</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", textAlign: "center" }}>
+        <div><div style={{ fontSize: "16px", fontWeight: "800", color: "#fbbf24" }}>{Math.round(carbs)}g</div><div style={{ fontSize: "9px", color: "#64748b" }}>糖質</div></div>
+        <div><div style={{ fontSize: "16px", fontWeight: "800", color: "#60a5fa" }}>{Math.round(water)}ml</div><div style={{ fontSize: "9px", color: "#64748b" }}>水分</div></div>
+        <div><div style={{ fontSize: "16px", fontWeight: "800", color: "#c4b5fd" }}>{Math.round(sodium)}mg</div><div style={{ fontSize: "9px", color: "#64748b" }}>Na</div></div>
+      </div>
+    </div>
+  );
+}
+
+function ScoreRing({ score, color, label }) {
+  const r = 28, circ = 2 * Math.PI * r;
+  const dash = (score / 100) * circ;
+  return (
+    <div style={{ textAlign: "center" }}>
+      <svg width="72" height="72" viewBox="0 0 72 72">
+        <circle cx="36" cy="36" r={r} fill="none" stroke="rgba(148,163,184,0.1)" strokeWidth="6"/>
+        <circle cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="6"
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+          transform="rotate(-90 36 36)" style={{ transition: "stroke-dasharray 1s ease" }}/>
+        <text x="36" y="40" textAnchor="middle" fill={color} fontSize="14" fontWeight="800">{score}</text>
+      </svg>
+      <div style={{ fontSize: "10px", color: "#64748b", marginTop: "2px" }}>{label}</div>
+    </div>
+  );
+}
+
+function AnalysisStep({ analysis, profile, runType, runData, symptoms, feeling, onDone }) {
+  return (
+    <div style={{ padding: "28px 20px" }}>
+      <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>RESULT</div>
+      <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "4px" }}>診断結果</div>
+      <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px" }}>{profile.name} さんの補給分析レポート</p>
+
+      {/* Overall score */}
+      <div style={{
+        textAlign: "center", padding: "28px 20px 20px", borderRadius: "18px", marginBottom: "16px",
+        background: "linear-gradient(135deg, rgba(30,41,59,0.7), rgba(15,23,42,0.5))",
+        border: "1px solid rgba(148,163,184,0.1)",
+      }}>
+        <div style={{ fontSize: "11px", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "12px" }}>補給スコア</div>
+        <div style={{
+          fontSize: "64px", fontWeight: "900", letterSpacing: "-3px", lineHeight: 1,
+          background: analysis.overallScore >= 80 ? "linear-gradient(135deg, #4ade80, #22c55e)"
+            : analysis.overallScore >= 55 ? "linear-gradient(135deg, #fbbf24, #f59e0b)"
+            : "linear-gradient(135deg, #f87171, #ef4444)",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+        }}>{analysis.overallScore}</div>
+        <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "6px" }}>
+          {analysis.overallScore >= 80 ? "素晴らしい補給！" : analysis.overallScore >= 55 ? "改善の余地あり" : "要大幅改善"}
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: "24px", marginTop: "20px" }}>
+          <ScoreRing score={analysis.carbScore}   color="#fbbf24" label="糖質" />
+          <ScoreRing score={analysis.waterScore}  color="#60a5fa" label="水分" />
+          <ScoreRing score={analysis.sodiumScore} color="#c4b5fd" label="Na" />
+        </div>
+      </div>
+
+      {/* Run + symptom summary */}
+      {runData && (
+        <div style={{ padding: "12px 14px", borderRadius: "12px", marginBottom: "14px", background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.06)", display: "flex", gap: "14px", flexWrap: "wrap", fontSize: "11px", color: "#94a3b8" }}>
+          <span>📍 {runData.dist.toFixed(1)}km</span>
+          <span>⏱ {fmt(runData.durationMins)}</span>
+          {runData.ascent > 0 && <span>↑{runData.ascent}m</span>}
+          <span>{["😫","😕","😐","😊","🤩"][feeling-1]} 体調 {feeling}/5</span>
+        </div>
+      )}
+
+      {/* Symptom tags */}
+      {symptoms.filter(s => s.id !== "none").length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "16px" }}>
+          {symptoms.filter(s => s.id !== "none").map(s => {
+            const opt = SYMPTOM_OPTIONS.find(o => o.id === s.id);
+            return opt ? (
+              <div key={s.id} style={{ padding: "4px 10px", borderRadius: "20px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: "11px", color: "#fca5a5" }}>
+                {opt.icon} {opt.label}{s.km > 0 ? ` (${s.km}km)` : ""}
+              </div>
+            ) : null;
+          })}
+        </div>
+      )}
+
+      {/* Insights */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+        {analysis.insights.map((ins, i) => (
+          <div key={i} style={{
+            padding: "14px 16px", borderRadius: "14px",
+            background: ins.type === "good" ? "rgba(34,197,94,0.08)" : ins.type === "warn" ? "rgba(239,68,68,0.08)" : "rgba(99,102,241,0.08)",
+            border: `1px solid ${ins.type === "good" ? "rgba(34,197,94,0.2)" : ins.type === "warn" ? "rgba(239,68,68,0.2)" : "rgba(99,102,241,0.2)"}`,
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              <span style={{ fontSize: "20px", lineHeight: 1.3 }}>{ins.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "13px", fontWeight: "700", color: "#f1f5f9", marginBottom: "4px" }}>{ins.title}</div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.6 }}>{ins.detail}</div>
+                {ins.fix && <div style={{ fontSize: "11px", color: ins.type === "good" ? "#4ade80" : ins.type === "warn" ? "#fca5a5" : "#a5b4fc", marginTop: "6px", lineHeight: 1.6 }}>💡 {ins.fix}</div>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* CTA */}
+      <div style={{ ...cardBase, textAlign: "center", padding: "24px 20px", marginBottom: "16px" }}>
+        <div style={{ fontSize: "28px", marginBottom: "8px" }}>🎉</div>
+        <div style={{ fontSize: "16px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>プロフィール完成！</div>
+        <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.7, marginBottom: "20px" }}>
+          {profile.name} さんの補給データをもとに<br/>
+          パーソナライズされたプランを作成できます。
+        </div>
+        <button onClick={onDone} style={{
+          width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+          background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+          color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+          boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
+        }}>プランを作成する →</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main App Shell (post-onboarding) ──────────────────────────────────────
+function MainAppShell({ profile, runType, analysis, runData }) {
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(165deg, #0a0e17 0%, #111827 40%, #1a1a2e 100%)",
+      color: "#e2e8f0",
+      fontFamily: "'Noto Sans JP', 'SF Pro Display', -apple-system, sans-serif",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: "40px 24px", textAlign: "center",
+    }}>
+      <div style={{ fontSize: "48px", marginBottom: "16px" }}>⚡</div>
+      <div style={{ fontSize: "24px", fontWeight: "900", letterSpacing: "-1px", color: "#f8fafc", marginBottom: "8px" }}>
+        おかえり、{profile.name || "ランナー"}さん
+      </div>
+      <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "32px", lineHeight: 1.7 }}>
+        {runType === "trail" ? "🏔️ トレイルラン" : runType === "road" ? "🏙️ ロードラン" : "🔄 マルチスポーツ"} モード<br/>
+        補給スコア: <strong style={{ color: "#4ade80" }}>{analysis?.overallScore ?? "–"}</strong> / 100
+      </div>
+      <div style={{ padding: "16px 20px", borderRadius: "14px", background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.08)", fontSize: "13px", color: "#475569", maxWidth: "320px" }}>
+        ここに次のプランナー・トレーニング計画・ログ画面が続きます<br/>
+        <span style={{ fontSize: "11px" }}>（次フェーズで実装）</span>
+      </div>
+    </div>
+  );
+}
