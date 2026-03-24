@@ -265,7 +265,7 @@ function fmt(m) {
 }
 
 // ─── Main App ──────────────────────────────────────────────────────────────
-export default function FuelLabOnboarding() {
+function FuelLabOnboarding() {
   const [step, setStep] = useState(0);
   const [runType, setRunType] = useState(null);       // 'road' | 'trail' | 'both'
   const [profile, setProfile] = useState({ name: "", age: 30, height: 170, weight: 65 });
