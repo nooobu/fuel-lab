@@ -1,26 +1,3 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FUEL LAB ⚡ Trail Running Nutrition Planner</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; background: #0a0f1e; }
-    #root { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-    input[type=number] { -moz-appearance: textfield; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel" data-presets="react">
 const { useState, useRef, useMemo } = React;
 
 // ─── Nutrition presets ─────────────────────────────────────────────────────
@@ -999,10 +976,3 @@ function MainAppShell({ profile, runType, analysis, runData }) {
     </div>
   );
 }
-
-
-ReactDOM.createRoot(document.getElementById("root")).render(<FuelLabOnboarding />);
-
-  </script>
-</body>
-</html>
