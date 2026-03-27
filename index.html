@@ -298,11 +298,110 @@ function fmt(m) {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
+// ─── Persistence ────────────────────────────────────────────────────────────
+const db = {
+  users() { return JSON.parse(localStorage.getItem("fl_users") || "{}"); },
+  save(u, k, v) { localStorage.setItem(`fl_${u}_${k}`, JSON.stringify(v)); },
+  load(u, k, d = null) {
+    try { const r = localStorage.getItem(`fl_${u}_${k}`); return r ? JSON.parse(r) : d; }
+    catch { return d; }
+  },
+};
+
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("login");
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const bg   = "linear-gradient(165deg, #0a0e17 0%, #111827 40%, #1a1a2e 100%)";
+  const font = "'Noto Sans JP', 'SF Pro Display', -apple-system, sans-serif";
+
+  function handleSignup() {
+    if (!username.trim() || !displayName.trim() || password.length < 4) {
+      setError("ユーザー名・表示名・パスワード（4文字以上）を入力してください"); return;
+    }
+    const users = db.users();
+    if (users[username]) { setError("このユーザー名は既に使われています"); return; }
+    users[username] = { username, displayName, password };
+    localStorage.setItem("fl_users", JSON.stringify(users));
+    localStorage.setItem("fl_currentUser", username);
+    onAuth({ username, displayName });
+  }
+
+  function handleLogin() {
+    const users = db.users();
+    const u = users[username];
+    if (!u || u.password !== password) { setError("ユーザー名またはパスワードが違います"); return; }
+    localStorage.setItem("fl_currentUser", username);
+    onAuth({ username, displayName: u.displayName });
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: bg, fontFamily: font, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div style={{ width: "100%", maxWidth: "380px" }}>
+        <div style={{ textAlign: "center", marginBottom: "32px" }}>
+          <div style={{ fontSize: "40px", marginBottom: "8px" }}>⚡</div>
+          <div style={{ fontSize: "24px", fontWeight: "900", letterSpacing: "-1px", color: "#f8fafc" }}>FUEL LAB</div>
+          <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>Trail Running Nutrition Planner</div>
+        </div>
+        <div style={{ display: "flex", background: "rgba(15,23,42,0.6)", borderRadius: "12px", padding: "4px", marginBottom: "20px" }}>
+          {[["login", "ログイン"], ["signup", "新規登録"]].map(([m, label]) => (
+            <button key={m} onClick={() => { setMode(m); setError(""); }} style={{
+              flex: 1, padding: "10px", borderRadius: "9px", border: "none", cursor: "pointer",
+              background: m === mode ? "rgba(99,102,241,0.25)" : "transparent",
+              color: m === mode ? "#a5b4fc" : "#475569", fontSize: "13px", fontWeight: "700",
+            }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ ...cardBase, padding: "20px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+              ユーザー名
+              <input value={username} onChange={e => setUsername(e.target.value.trim())} placeholder="nooobu" style={inputStyle} />
+            </label>
+            {mode === "signup" && (
+              <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+                表示名
+                <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="のぶ" style={inputStyle} />
+              </label>
+            )}
+            <label style={{ fontSize: "11px", color: "#64748b", display: "flex", flexDirection: "column", gap: "5px" }}>
+              パスワード
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} />
+            </label>
+          </div>
+          {error && <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", fontSize: "12px", color: "#f87171" }}>{error}</div>}
+          <button onClick={mode === "signup" ? handleSignup : handleLogin} style={{
+            marginTop: "16px", width: "100%", padding: "14px", borderRadius: "12px", border: "none",
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff", fontSize: "14px", fontWeight: "800", cursor: "pointer",
+            boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
+          }}>{mode === "signup" ? "アカウントを作成する →" : "ログイン →"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App Root ───────────────────────────────────────────────────────────────
+function AppRoot() {
+  const [user, setUser] = useState(() => {
+    const u = localStorage.getItem("fl_currentUser");
+    if (!u) return null;
+    const users = db.users();
+    return users[u] ? { username: u, displayName: users[u].displayName } : null;
+  });
+  if (!user) return <AuthScreen onAuth={setUser} />;
+  return <FuelLabOnboarding user={user} onLogout={() => { localStorage.removeItem("fl_currentUser"); setUser(null); }} />;
+}
+
 // ─── Main App ──────────────────────────────────────────────────────────────
-function FuelLabOnboarding() {
+function FuelLabOnboarding({ user, onLogout }) {
   const [step, setStep] = useState(0);
-  const [runType, setRunType] = useState(null);       // 'road' | 'trail' | 'both'
-  const [profile, setProfile] = useState({ name: "", age: 30, height: 170, weight: 65 });
+  const [runType, setRunType] = useState(db.load(user.username, "runType") || null);       // 'road' | 'trail' | 'both'
+  const [profile, setProfile] = useState(db.load(user.username, "profile") || { name: user.displayName, age: 30, height: 170, weight: 65 });
   const [runData, setRunData] = useState(null);
   const [manualMode, setManualMode] = useState(false);
   const [manualRun, setManualRun] = useState({ title: "", dist: 0, hours: 0, mins: 0, ascent: 0, avgHR: 0 });
@@ -312,7 +411,7 @@ function FuelLabOnboarding() {
   const [feeling, setFeeling] = useState(3);
   const [symptoms, setSymptoms] = useState([]);
   const [analysis, setAnalysis] = useState(null);
-  const [onboardingDone, setOnboardingDone] = useState(false);
+  const [onboardingDone, setOnboardingDone] = useState(!!db.load(user.username, "profile"));
   const csvInputRef = useRef(null);
 
   const TOTAL_STEPS = 6; // 1 welcome + 5 content steps
@@ -335,7 +434,7 @@ function FuelLabOnboarding() {
     setNutritionItems(prev => {
       const p = NUTRITION_PRESETS.find(x => x.id === id);
       if (prev.find(i => i.id === id)) return prev.filter(i => i.id !== id);
-      return [...prev, { id, qty: p.defaultQty, carbs: p.carbs, sodium: p.sodium, water: p.water }];
+      return [...prev, { id, qty: p.defaultQty, carbs: p.carbs, sodium: p.sodium, water: p.water, k: p.k ?? 0, mg: p.mg ?? 0 }];
     });
   }
 
@@ -387,7 +486,7 @@ function FuelLabOnboarding() {
     true,                                          // 5 symptoms (optional)
   ];
 
-  if (onboardingDone) return <MainAppShell profile={profile} runType={runType} analysis={analysis} runData={effectiveRunData()} />;
+  if (onboardingDone) return <MainAppShell user={user} profile={profile} runType={runType} analysis={analysis} runData={effectiveRunData()} onLogout={onLogout} />;
 
   return (
     <div style={{
@@ -822,7 +921,7 @@ function FuelLabOnboarding() {
             runData={effectiveRunData()}
             symptoms={symptoms}
             feeling={feeling}
-            onDone={() => setOnboardingDone(true)}
+            onDone={() => { db.save(user.username, "profile", profile); db.save(user.username, "runType", runType); setOnboardingDone(true); }}
           />
         )}
 
@@ -1031,8 +1130,9 @@ function StepperInput({ label, unit, value, min, max, step = 1, onChange }) {
 }
 
 // ─── Plan Screen ────────────────────────────────────────────────────────────
-function PlanScreen({ profile, runType, analysis, runData, onBack }) {
+function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan }) {
   const [tab, setTab] = useState("setup");
+  const [planSaved, setPlanSaved] = useState(false);
   const [dist, setDist] = useState(Math.round(runData?.dist ?? 15));
   const [pace, setPace] = useState(() => {
     if (runData?.durationMins && runData?.dist > 0) {
@@ -1251,6 +1351,16 @@ function PlanScreen({ profile, runType, analysis, runData, onBack }) {
               ))}
             </div>
 
+            <button onClick={() => { onSavePlan({ dist, pace, ascent, targetCarbsHr, targetWaterHr, targetSodiumHr, timeline }); setPlanSaved(true); }} style={{
+              width: "100%", padding: "14px", borderRadius: "14px", border: "none",
+              background: planSaved ? "rgba(34,197,94,0.15)" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              border: planSaved ? "1px solid rgba(34,197,94,0.3)" : "none",
+              color: planSaved ? "#4ade80" : "#fff", fontSize: "14px", fontWeight: "800", cursor: "pointer",
+              marginBottom: "12px",
+            }}>
+              {planSaved ? "✅ 保存済み" : "💾 このプランを保存"}
+            </button>
+
             <div style={{ marginTop: "12px", padding: "12px 14px", borderRadius: "12px", background: "rgba(15,23,42,0.4)", border: "1px solid rgba(148,163,184,0.06)", fontSize: "11px", color: "#475569", textAlign: "center" }}>
               スクリーンショットして当日に活用しよう 📸
             </div>
@@ -1261,8 +1371,159 @@ function PlanScreen({ profile, runType, analysis, runData, onBack }) {
   );
 }
 
+// ─── Nutrition Edit Modal ────────────────────────────────────────────────────
+function NutritionEditModal({ activity, runType, onSave, onClose }) {
+  const [nutritionItems, setNutritionItems] = useState(activity.nutritionItems || []);
+  const [symptoms, setSymptoms]   = useState(activity.symptoms || []);
+  const [feeling,  setFeeling]    = useState(activity.feeling  || 3);
+
+  function toggleNutrition(id) {
+    setNutritionItems(prev => {
+      const p = NUTRITION_PRESETS.find(x => x.id === id);
+      if (prev.find(i => i.id === id)) return prev.filter(i => i.id !== id);
+      return [...prev, { id, qty: p.defaultQty, carbs: p.carbs, sodium: p.sodium, water: p.water, k: p.k ?? 0, mg: p.mg ?? 0 }];
+    });
+  }
+  function updateQty(id, qty) {
+    setNutritionItems(prev => prev.map(i => i.id === id ? { ...i, qty } : i));
+  }
+  function toggleSymptom(id) {
+    setSymptoms(prev => {
+      if (id === "none") return [{ id: "none", km: 0 }];
+      const filtered = prev.filter(s => s.id !== "none");
+      if (filtered.find(s => s.id === id)) return filtered.filter(s => s.id !== id);
+      return [...filtered, { id, km: 0 }];
+    });
+  }
+  function handleSave() {
+    const newAnalysis = computeAnalysis(activity.runData, nutritionItems, symptoms, runType);
+    onSave({ ...activity, nutritionItems, symptoms, feeling, analysis: newAnalysis });
+  }
+
+  const FEELING_OPTIONS = [
+    { val: 1, icon: "😫", label: "ひどかった" }, { val: 2, icon: "😕", label: "きつかった" },
+    { val: 3, icon: "😐", label: "普通" },       { val: 4, icon: "😊", label: "良かった" },
+    { val: 5, icon: "🤩", label: "最高！" },
+  ];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, overflowY: "auto" }}>
+      <div style={{ maxWidth: 430, margin: "0 auto", padding: "20px 20px 100px",
+        fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif", color: "#e2e8f0" }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px", paddingTop: "8px" }}>
+          <button onClick={onClose} style={{ background: "rgba(30,41,59,0.8)", border: "1px solid rgba(148,163,184,0.1)", color: "#94a3b8", borderRadius: "10px", padding: "8px 14px", cursor: "pointer", fontSize: "13px", fontWeight: "700" }}>✕ 閉じる</button>
+          <div>
+            <div style={{ fontSize: "16px", fontWeight: "800", color: "#f1f5f9" }}>補給を記録</div>
+            <div style={{ fontSize: "11px", color: "#64748b" }}>{activity.runData.title || "トレーニングラン"}</div>
+          </div>
+        </div>
+
+        {/* Run summary */}
+        <div style={{ ...cardBase, marginBottom: "20px", padding: "12px 16px", display: "flex", gap: "16px", fontSize: "11px", color: "#94a3b8" }}>
+          <span>📍 {(activity.runData.dist || 0).toFixed(1)}km</span>
+          <span>⏱ {fmt(activity.runData.durationMins)}</span>
+          {activity.runData.ascent > 0 && <span>↑{activity.runData.ascent}m</span>}
+        </div>
+
+        {/* Nutrition picker */}
+        <div style={{ fontSize: "13px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "12px" }}>補給したもの</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
+          {NUTRITION_PRESETS.map(preset => {
+            const selected = nutritionItems.find(i => i.id === preset.id);
+            const qtyStep = preset.unit === "ml" ? (preset.defaultQty >= 150 ? 100 : 50) : 1;
+            return (
+              <div key={preset.id} onClick={() => toggleNutrition(preset.id)} style={{
+                padding: "12px 10px", borderRadius: "14px", cursor: "pointer",
+                background: selected ? "rgba(34,197,94,0.1)" : "rgba(30,41,59,0.5)",
+                border: `1px solid ${selected ? "rgba(34,197,94,0.4)" : "rgba(148,163,184,0.08)"}`,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: selected ? "8px" : 0 }}>
+                  <span style={{ fontSize: "20px" }}>{preset.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "13px", fontWeight: "700", color: selected ? "#4ade80" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preset.name}</div>
+                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                      {preset.carbs > 0 ? `糖${preset.carbs}g ` : ""}{preset.sodium > 0 ? `Na${preset.sodium}mg` : ""}
+                    </div>
+                  </div>
+                  {selected && <div style={{ width: "15px", height: "15px", borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "8px", flexShrink: 0 }}>✓</div>}
+                </div>
+                {selected && (
+                  <div onClick={e => e.stopPropagation()}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                      <button onClick={() => updateQty(preset.id, Math.max(0, selected.qty - qtyStep))}
+                        style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(148,163,184,0.15)", color: "#94a3b8", cursor: "pointer", fontSize: "14px" }}>−</button>
+                      <span style={{ fontSize: "13px", fontWeight: "700", color: "#f1f5f9", flex: 1, textAlign: "center" }}>{selected.qty}{preset.unit}</span>
+                      <button onClick={() => updateQty(preset.id, selected.qty + qtyStep)}
+                        style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(34,197,94,0.15)", color: "#4ade80", cursor: "pointer", fontSize: "14px" }}>＋</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {nutritionItems.length > 0 && <NutritionTotals items={nutritionItems} />}
+
+        {/* Feeling */}
+        <div style={{ fontSize: "13px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", margin: "20px 0 12px" }}>体調</div>
+        <div style={{ ...cardBase, marginBottom: "16px", padding: "14px 16px" }}>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {FEELING_OPTIONS.map(f => (
+              <button key={f.val} onClick={() => setFeeling(f.val)} style={{
+                flex: 1, padding: "8px 4px", borderRadius: "10px", border: "none", cursor: "pointer",
+                background: feeling === f.val ? "rgba(34,197,94,0.15)" : "rgba(30,41,59,0.4)",
+                border: `1px solid ${feeling === f.val ? "rgba(34,197,94,0.4)" : "rgba(148,163,184,0.06)"}`,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: "3px",
+              }}>
+                <span style={{ fontSize: "20px" }}>{f.icon}</span>
+                <span style={{ fontSize: "9px", color: feeling === f.val ? "#4ade80" : "#475569" }}>{f.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Symptoms */}
+        <div style={{ fontSize: "13px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "12px" }}>症状</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "24px" }}>
+          {SYMPTOM_OPTIONS.map(opt => {
+            const sel = symptoms.find(s => s.id === opt.id);
+            return (
+              <div key={opt.id} onClick={() => toggleSymptom(opt.id)} style={{
+                display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "12px", cursor: "pointer",
+                background: sel ? (opt.id === "none" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)") : "rgba(30,41,59,0.4)",
+                border: `1px solid ${sel ? (opt.id === "none" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.2)") : "rgba(148,163,184,0.06)"}`,
+              }}>
+                <span style={{ fontSize: "20px" }}>{opt.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "13px", fontWeight: "600", color: "#e2e8f0" }}>{opt.label}</div>
+                  {opt.cause && <div style={{ fontSize: "10px", color: "#64748b" }}>{opt.cause}</div>}
+                </div>
+                <div style={{
+                  width: "18px", height: "18px", borderRadius: "5px", border: "2px solid",
+                  borderColor: sel ? (opt.id === "none" ? "#22c55e" : "#ef4444") : "rgba(148,163,184,0.2)",
+                  background: sel ? (opt.id === "none" ? "#22c55e" : "#ef4444") : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px",
+                }}>{sel ? "✓" : ""}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button onClick={handleSave} style={{
+          width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+          background: "linear-gradient(135deg, #22c55e, #059669)",
+          color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+          boxShadow: "0 8px 24px rgba(34,197,94,0.3)",
+        }}>分析を更新する 🔬</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Activity Card ───────────────────────────────────────────────────────────
-function ActivityCard({ activity }) {
+function ActivityCard({ activity, onEdit }) {
   const { runData, analysis } = activity;
   const score = analysis?.overallScore;
   const scoreColor = score >= 80 ? "#4ade80" : score >= 55 ? "#fbbf24" : "#f87171";
@@ -1287,12 +1548,26 @@ function ActivityCard({ activity }) {
           </div>
         )}
       </div>
+      {onEdit && (
+        <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid rgba(148,163,184,0.06)" }}>
+          <button onClick={e => { e.stopPropagation(); onEdit(); }} style={{
+            width: "100%", padding: "8px", borderRadius: "10px", border: "none",
+            background: (!activity.nutritionItems || activity.nutritionItems.length === 0)
+              ? "rgba(99,102,241,0.15)" : "rgba(30,41,59,0.4)",
+            color: (!activity.nutritionItems || activity.nutritionItems.length === 0)
+              ? "#a5b4fc" : "#64748b",
+            fontSize: "12px", fontWeight: "700", cursor: "pointer",
+          }}>
+            {(!activity.nutritionItems || activity.nutritionItems.length === 0) ? "📝 補給を記録する" : "✏️ 補給を編集"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Dashboard Screen ────────────────────────────────────────────────────────
-function DashboardScreen({ profile, runType, activities, onAddActivity, onPlan }) {
+function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivity, onEditActivity, onPlan, onLogout }) {
   const [period, setPeriod] = useState("weekly");
   const fileRef = useRef(null);
 
@@ -1316,12 +1591,15 @@ function DashboardScreen({ profile, runType, activities, onAddActivity, onPlan }
       <div style={{ position: "fixed", top: "-20%", right: "-10%", width: "50vw", height: "50vw", background: "radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)", pointerEvents: "none" }} />
 
       {/* Header */}
-      <div style={{ padding: "28px 20px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
-          <span style={{ fontSize: "20px" }}>⚡</span>
-          <span style={{ fontSize: "16px", fontWeight: "900", letterSpacing: "-0.5px", color: "#f8fafc" }}>FUEL LAB</span>
+      <div style={{ padding: "28px 20px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
+            <span style={{ fontSize: "20px" }}>⚡</span>
+            <span style={{ fontSize: "16px", fontWeight: "900", letterSpacing: "-0.5px", color: "#f8fafc" }}>FUEL LAB</span>
+          </div>
+          <div style={{ fontSize: "11px", color: "#475569" }}>プロフィールダッシュボード</div>
         </div>
-        <div style={{ fontSize: "11px", color: "#475569" }}>プロフィールダッシュボード</div>
+        <button onClick={onLogout} style={{ background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.1)", color: "#475569", borderRadius: "10px", padding: "8px 12px", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}>ログアウト</button>
       </div>
 
       <div style={{ padding: "16px 20px 80px" }}>
@@ -1387,7 +1665,7 @@ function DashboardScreen({ profile, runType, activities, onAddActivity, onPlan }
             この期間のトレーニングはありません
           </div>
         ) : (
-          periodActivities.map(act => <ActivityCard key={act.id} activity={act} />)
+          periodActivities.map(act => <ActivityCard key={act.id} activity={act} onEdit={() => onEditActivity(act)} />)
         )}
 
         {/* Add activity */}
@@ -1400,6 +1678,32 @@ function DashboardScreen({ profile, runType, activities, onAddActivity, onPlan }
         }}>
           + トレーニングログを追加
         </button>
+
+        {/* Saved plans */}
+        {savedPlans && savedPlans.length > 0 && (
+          <>
+            <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "12px", marginTop: "8px" }}>
+              SAVED PLANS
+            </div>
+            {savedPlans.map(plan => (
+              <div key={plan.id} style={{ ...cardBase, marginBottom: "10px", padding: "14px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "12px", fontWeight: "700", color: "#f1f5f9", marginBottom: "4px" }}>
+                      📋 {plan.dist}km · ペース {plan.pace}分/km · ↑{plan.ascent}m
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#64748b" }}>
+                      糖質 {plan.targetCarbsHr}g/hr · 水分 {plan.targetWaterHr}ml/hr · Na {plan.targetSodiumHr}mg/hr
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#334155", flexShrink: 0 }}>
+                    {new Date(plan.createdAt).toLocaleDateString("ja-JP", { month: "short", day: "numeric" })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
 
         {/* Plan CTA */}
         <button onClick={onPlan} style={{
@@ -1414,28 +1718,71 @@ function DashboardScreen({ profile, runType, activities, onAddActivity, onPlan }
 }
 
 // ─── Main App Shell (navigation shell) ──────────────────────────────────────
-function MainAppShell({ profile, runType, analysis, runData }) {
+function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
   const [view, setView] = useState("dashboard");
-  const [activities, setActivities] = useState([{ id: 1, runData, analysis, addedAt: new Date() }]);
+  const [editingActivity, setEditingActivity] = useState(null);
+
+  const [activities, setActivities] = useState(() => {
+    const saved = db.load(user.username, "activities");
+    if (saved && saved.length > 0) return saved;
+    const initial = (runData && analysis)
+      ? [{ id: 1, runData, analysis, nutritionItems: [], symptoms: [], feeling: 3, addedAt: new Date().toISOString() }]
+      : [];
+    if (initial.length > 0) db.save(user.username, "activities", initial);
+    return initial;
+  });
+
+  const [savedPlans, setSavedPlans] = useState(() => db.load(user.username, "plans", []));
+
+  function updateActivities(next) {
+    setActivities(next);
+    db.save(user.username, "activities", next);
+  }
 
   function handleAddActivity(file) {
     const reader = new FileReader();
     reader.onload = e => {
       const result = parseActivityCSV(e.target.result);
       if (result) {
-        const newAnalysis = computeAnalysis(result, [], [], runType);
-        setActivities(prev => [...prev, { id: Date.now(), runData: result, analysis: newAnalysis, addedAt: new Date() }]);
+        const newAct = { id: Date.now(), runData: result, analysis: computeAnalysis(result, [], [], runType), nutritionItems: [], symptoms: [], feeling: 3, addedAt: new Date().toISOString() };
+        const next = [...activities, newAct];
+        updateActivities(next);
+        setEditingActivity(newAct);
       }
     };
     reader.readAsText(file, "UTF-8");
   }
 
-  if (view === "plan") return <PlanScreen profile={profile} runType={runType} analysis={analysis} runData={runData} onBack={() => setView("dashboard")} />;
-  return <DashboardScreen profile={profile} runType={runType} activities={activities} onAddActivity={handleAddActivity} onPlan={() => setView("plan")} />;
+  function handleSaveActivity(updated) {
+    const next = activities.map(a => a.id === updated.id ? updated : a);
+    updateActivities(next);
+    setEditingActivity(null);
+  }
+
+  function handleSavePlan(plan) {
+    const next = [{ id: Date.now(), ...plan, createdAt: new Date().toISOString() }, ...savedPlans];
+    setSavedPlans(next);
+    db.save(user.username, "plans", next);
+  }
+
+  if (editingActivity) return (
+    <NutritionEditModal activity={editingActivity} runType={runType}
+      onSave={handleSaveActivity} onClose={() => setEditingActivity(null)} />
+  );
+  if (view === "plan") return (
+    <PlanScreen profile={profile} runType={runType} analysis={analysis} runData={runData}
+      onBack={() => setView("dashboard")} onSavePlan={handleSavePlan} />
+  );
+  return (
+    <DashboardScreen profile={profile} runType={runType} activities={activities}
+      savedPlans={savedPlans} onAddActivity={handleAddActivity}
+      onEditActivity={setEditingActivity} onPlan={() => setView("plan")}
+      onLogout={onLogout} />
+  );
 }
 
 
-ReactDOM.createRoot(document.getElementById("root")).render(<FuelLabOnboarding />);
+ReactDOM.createRoot(document.getElementById("root")).render(<AppRoot />);
 
   </script>
 </body>
