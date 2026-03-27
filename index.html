@@ -64,11 +64,19 @@ function parseActivityCSV(text) {
     .filter(l => l.trim().length > 3 && !l.trim().startsWith("#"));
   if (dataLines.length === 0) return null;
 
-  // Parse one CSV row → object
+  // Parse one CSV row → object (handles quoted fields containing the delimiter)
   const parseRow = (line) => {
-    const vals = line.split(delim).map(v => v.trim().replace(/^"|"$/g, ""));
+    const vals = [];
+    let cur = "", inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === delim && !inQ) { vals.push(cur.trim()); cur = ""; }
+      else { cur += c; }
+    }
+    vals.push(cur.trim());
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = (vals[i] != null ? vals[i] : ""); });
+    headers.forEach((h, i) => { obj[h] = vals[i] != null ? vals[i] : ""; });
     return obj;
   };
 
