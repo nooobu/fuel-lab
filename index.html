@@ -25,18 +25,19 @@ const { useState, useRef, useMemo } = React;
 
 // ─── Nutrition presets ─────────────────────────────────────────────────────
 const NUTRITION_PRESETS = [
-  { id: "water",   icon: "💧", name: "水",               carbs: 0,  water: 500, sodium: 0,   unit: "ml",  defaultQty: 500  },
-  { id: "sports",  icon: "🥤", name: "スポーツドリンク",  carbs: 35, water: 500, sodium: 200, unit: "ml",  defaultQty: 500  },
-  { id: "gel",     icon: "⚡", name: "エナジージェル",    carbs: 25, water: 0,   sodium: 50,  unit: "個",  defaultQty: 1    },
-  { id: "caffgel", icon: "☕", name: "カフェインジェル",  carbs: 22, water: 0,   sodium: 40,  unit: "個",  defaultQty: 1    },
-  { id: "onigiri", icon: "🍙", name: "おにぎり",          carbs: 40, water: 0,   sodium: 350, unit: "個",  defaultQty: 1    },
-  { id: "bar",     icon: "🍫", name: "エナジーバー",      carbs: 35, water: 0,   sodium: 100, unit: "本",  defaultQty: 1    },
-  { id: "salt",    icon: "🧂", name: "塩タブ",            carbs: 0,  water: 0,   sodium: 200, unit: "粒",  defaultQty: 3    },
-  { id: "cola",    icon: "🫙", name: "コーラ",            carbs: 15, water: 150, sodium: 10,  unit: "ml",  defaultQty: 150  },
-  { id: "banana",  icon: "🍌", name: "バナナ",            carbs: 27, water: 0,   sodium: 1,   unit: "本",  defaultQty: 1    },
-  { id: "manju",   icon: "🍡", name: "まんじゅう",        carbs: 35, water: 0,   sodium: 50,  unit: "個",  defaultQty: 1    },
-  { id: "chips",   icon: "🥔", name: "ポテトチップス",    carbs: 15, water: 0,   sodium: 150, unit: "g",   defaultQty: 30   },
-  { id: "anpan",   icon: "🍞", name: "あんぱん",          carbs: 45, water: 0,   sodium: 200, unit: "個",  defaultQty: 1    },
+  //                                                                                         ┌─ K (mg) ─┐ ┌─ Mg (mg) ─┐
+  { id: "water",   icon: "💧", name: "水",               carbs: 0,  water: 500, sodium:   0, k:   0, mg:  0, unit: "ml", defaultQty: 500 },
+  { id: "sports",  icon: "🥤", name: "電解質ドリンク",   carbs: 25, water: 500, sodium: 400, k: 120, mg: 20, unit: "ml", defaultQty: 500 },
+  { id: "gel",     icon: "⚡", name: "エナジージェル",   carbs: 25, water: 0,   sodium:  50, k:  20, mg:  5, unit: "個", defaultQty: 1   },
+  { id: "caffgel", icon: "☕", name: "カフェインジェル", carbs: 22, water: 0,   sodium:  40, k:  15, mg:  5, unit: "個", defaultQty: 1   },
+  { id: "onigiri", icon: "🍙", name: "おにぎり",         carbs: 40, water: 0,   sodium: 350, k:  80, mg: 15, unit: "個", defaultQty: 1   },
+  { id: "bar",     icon: "🍫", name: "エナジーバー",     carbs: 35, water: 0,   sodium: 100, k:  80, mg: 20, unit: "本", defaultQty: 1   },
+  { id: "salt",    icon: "🧂", name: "塩タブ",           carbs: 0,  water: 0,   sodium: 200, k:  40, mg: 10, unit: "粒", defaultQty: 3   },
+  { id: "cola",    icon: "🫙", name: "コーラ",           carbs: 15, water: 150, sodium:  10, k:  15, mg:  5, unit: "ml", defaultQty: 150 },
+  { id: "banana",  icon: "🍌", name: "バナナ",           carbs: 27, water: 0,   sodium:   1, k: 420, mg: 30, unit: "本", defaultQty: 1   },
+  { id: "manju",   icon: "🍡", name: "まんじゅう",       carbs: 35, water: 0,   sodium:  50, k:  30, mg:  5, unit: "個", defaultQty: 1   },
+  { id: "chips",   icon: "🥔", name: "ポテトチップス",   carbs: 15, water: 0,   sodium: 150, k:  80, mg: 10, unit: "g",  defaultQty: 30  },
+  { id: "anpan",   icon: "🍞", name: "あんぱん",         carbs: 45, water: 0,   sodium: 200, k:  90, mg: 15, unit: "個", defaultQty: 1   },
 ];
 
 const SYMPTOM_OPTIONS = [
@@ -190,28 +191,39 @@ function computeAnalysis(runData, nutritionItems, symptoms, runType) {
   const hours = runData.durationMins / 60;
   const isTrail = runType === "trail";
 
-  let totalCarbs = 0, totalWater = 0, totalSodium = 0;
+  let totalCarbs = 0, totalWater = 0, totalSodium = 0, totalK = 0, totalMg = 0;
   nutritionItems.forEach(item => {
     const p = NUTRITION_PRESETS.find(x => x.id === item.id);
     if (!p) return;
     const mult = p.unit === "ml" ? item.qty / p.defaultQty : item.qty;
-    // Use user-edited values if present, fallback to preset defaults
-    totalCarbs  += ((item.carbs  != null ? item.carbs  : p.carbs))  * mult;
-    totalWater  += ((item.water  != null ? item.water  : p.water))  * mult;
-    totalSodium += ((item.sodium != null ? item.sodium : p.sodium)) * mult;
+    totalCarbs  += (item.carbs  != null ? item.carbs  : p.carbs)  * mult;
+    totalWater  += (item.water  != null ? item.water  : p.water)  * mult;
+    totalSodium += (item.sodium != null ? item.sodium : p.sodium) * mult;
+    totalK      += (item.k      != null ? item.k      : (p.k  ?? 0)) * mult;
+    totalMg     += (item.mg     != null ? item.mg     : (p.mg ?? 0)) * mult;
   });
 
+  // 推奨量 / 時間（エビデンスベース）
   const recCarbsH  = 60;
   const recWaterH  = isTrail ? 500 : 420;
   const recSodiumH = isTrail ? 650 : 500;
+  const recKH      = 150;   // mg/hr — 発汗で失うK量の中央値
+  const recMgH     = 60;    // mg/hr — 運動中の消費+発汗分
+
   const recCarbs  = recCarbsH  * hours;
   const recWater  = recWaterH  * hours;
   const recSodium = recSodiumH * hours;
+  const recK      = recKH      * hours;
+  const recMg     = recMgH     * hours;
 
-  const carbScore   = nutritionItems.length === 0 ? 0 : Math.min(100, Math.round((totalCarbs  / recCarbs)  * 100));
-  const waterScore  = nutritionItems.length === 0 ? 0 : Math.min(100, Math.round((totalWater  / recWater)  * 100));
-  const sodiumScore = nutritionItems.length === 0 ? 0 : Math.min(100, Math.round((totalSodium / recSodium) * 100));
-  const overallScore = Math.round((carbScore + waterScore + sodiumScore) / 3);
+  const noData = nutritionItems.length === 0;
+  const score = (total, rec) => noData ? 0 : Math.min(100, Math.round((total / rec) * 100));
+  const carbScore   = score(totalCarbs,  recCarbs);
+  const waterScore  = score(totalWater,  recWater);
+  const sodiumScore = score(totalSodium, recSodium);
+  const kScore      = score(totalK,      recK);
+  const mgScore     = score(totalMg,     recMg);
+  const overallScore = Math.round((carbScore + waterScore + sodiumScore + kScore + mgScore) / 5);
 
   const has = (id) => symptoms.some(s => s.id === id);
   const insights = [];
@@ -228,16 +240,23 @@ function computeAnalysis(runData, nutritionItems, symptoms, runType) {
     fix: "45〜60分ごとにジェル1本（約25g）または固形物で補充を。",
   });
 
-  if (sodiumScore < 75 || has("cramp") || has("headache")) insights.push({
-    type: "warn", icon: "🧂", title: "ナトリウムが不足していました",
+  if (sodiumScore < 75 || has("headache")) insights.push({
+    type: "warn", icon: "🧂", title: "ナトリウム（Na）が不足していました",
     detail: `摂取 ${Math.round(totalSodium)}mg ／ 推奨 ${Math.round(recSodium)}mg（${recSodiumH}mg/時間）`,
-    fix: "30分ごとに塩タブ1〜2粒。スポーツドリンクと水を交互に飲むのも有効。",
+    fix: "30分ごとに塩タブ1〜2粒。電解質ドリンクと水を交互に飲むのも有効。",
   });
 
-  if (has("cramp")) insights.push({
-    type: "info", icon: "💊", title: "筋肉の攣りは電解質不足のシグナル",
-    detail: "Na・K・Mgのバランスが乱れると攣りやすくなります。",
-    fix: "Mg含有の電解質タブレットや、バナナ・ドライフルーツを補給に加えてみては。",
+  // K・Mg は攣りと直接紐付けて個別に評価
+  if (kScore < 75 || has("cramp")) insights.push({
+    type: "warn", icon: "🍌", title: "カリウム（K）が不足していました",
+    detail: `摂取 ${Math.round(totalK)}mg ／ 推奨 ${Math.round(recK)}mg（${recKH}mg/時間）`,
+    fix: "バナナ1本でK約420mg。電解質ドリンクや塩タブでもKは補給できます。",
+  });
+
+  if (mgScore < 75 || has("cramp")) insights.push({
+    type: "warn", icon: "💊", title: "マグネシウム（Mg）が不足していました",
+    detail: `摂取 ${Math.round(totalMg)}mg ／ 推奨 ${Math.round(recMg)}mg（${recMgH}mg/時間）`,
+    fix: "Mg含有の電解質タブレットが有効。ナッツ類・バナナも補給源になります。",
   });
 
   if (has("gi")) insights.push({
@@ -246,13 +265,20 @@ function computeAnalysis(runData, nutritionItems, symptoms, runType) {
     fix: "ジェルは必ず水と一緒に。固形物・液体・ジェルを時間軸で分散させましょう。",
   });
 
-  if (insights.length === 0 || (carbScore >= 80 && waterScore >= 80 && sodiumScore >= 80)) insights.push({
+  const allGood = carbScore >= 80 && waterScore >= 80 && sodiumScore >= 80 && kScore >= 80 && mgScore >= 80;
+  if (insights.length === 0 || allGood) insights.push({
     type: "good", icon: "✅", title: "補給バランスは良好です！",
-    detail: "三大栄養素すべてが推奨範囲内。素晴らしい。",
+    detail: "糖質・水分・Na・K・Mg すべてが推奨範囲内。完璧な補給です。",
     fix: "このパターンをベースに、次のレース計画を立てましょう。",
   });
 
-  return { totalCarbs: Math.round(totalCarbs), totalWater: Math.round(totalWater), totalSodium: Math.round(totalSodium), recCarbs: Math.round(recCarbs), recWater: Math.round(recWater), recSodium: Math.round(recSodium), carbScore, waterScore, sodiumScore, overallScore, insights };
+  return {
+    totalCarbs: Math.round(totalCarbs), totalWater: Math.round(totalWater),
+    totalSodium: Math.round(totalSodium), totalK: Math.round(totalK), totalMg: Math.round(totalMg),
+    recCarbs: Math.round(recCarbs), recWater: Math.round(recWater),
+    recSodium: Math.round(recSodium), recK: Math.round(recK), recMg: Math.round(recMg),
+    carbScore, waterScore, sodiumScore, kScore, mgScore, overallScore, insights,
+  };
 }
 
 // ─── Shared styles ─────────────────────────────────────────────────────────
@@ -911,10 +937,12 @@ function AnalysisStep({ analysis, profile, runType, runData, symptoms, feeling, 
         <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "6px" }}>
           {analysis.overallScore >= 80 ? "素晴らしい補給！" : analysis.overallScore >= 55 ? "改善の余地あり" : "要大幅改善"}
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: "24px", marginTop: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "20px" }}>
           <ScoreRing score={analysis.carbScore}   color="#fbbf24" label="糖質" />
           <ScoreRing score={analysis.waterScore}  color="#60a5fa" label="水分" />
           <ScoreRing score={analysis.sodiumScore} color="#c4b5fd" label="Na" />
+          <ScoreRing score={analysis.kScore}      color="#4ade80" label="K" />
+          <ScoreRing score={analysis.mgScore}     color="#fb923c" label="Mg" />
         </div>
       </div>
 
