@@ -156,12 +156,18 @@ function parseActivityCSV(text) {
   let totalDist = 0, totalMins = 0, totalAscent = 0, totalCal = 0;
   let hrSum = 0, hrCount = 0, maxHR = 0;
   let title = "", date = "";
+  const laps = [];
 
   dataLines.filter(l => !isSummaryRow(l)).forEach(line => {
     const row = parseRow(line);
-    totalDist   += toFloat(getCol(row, "Distance", "距離"));
-    totalMins   += toMins(getCol(row, "Time", "Moving Time", "Duration", "タイム", "Lap Time"));
-    totalAscent += toInt(getCol(row, "Elevation Gain", "Ascent", "Total Ascent", "累計上昇高度", "総上昇量"));
+    const lapDist   = toFloat(getCol(row, "Distance", "距離km", "距離")) || 1;
+    const lapPace   = toMins(getCol(row, "Avg Pace", "Average Pace", "平均ペース分／km", "平均ペース"));
+    const lapAscent = toInt(getCol(row, "Elevation Gain", "Ascent", "Total Ascent", "累計上昇高度", "総上昇量"));
+    laps.push({ dist: lapDist, paceMin: lapPace, ascent: lapAscent });
+
+    totalDist   += lapDist;
+    totalMins   += toMins(getCol(row, "Time", "Moving Time", "Duration", "タイム", "Lap Time", "累積時間"));
+    totalAscent += lapAscent;
     totalCal    += toInt(getCol(row, "Calories", "カロリー"));
 
     const hr  = toInt(getCol(row, "Avg HR", "Average HR", "Average Heart Rate", "平均心拍数"));
@@ -183,6 +189,7 @@ function parseActivityCSV(text) {
     avgHR: hrCount > 0 ? Math.round(hrSum / hrCount) : 0,
     maxHR,
     calories: totalCal,
+    laps,
   };
 }
 
@@ -296,6 +303,276 @@ const cardBase = {
 
 function fmt(m) {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+// ─── Nutrition Timeline (Step 4) ────────────────────────────────────────────
+function fmtT(mins) {
+  return `${Math.floor(mins / 60)}:${String(Math.round(mins % 60)).padStart(2, "0")}`;
+}
+
+function segTotals(items) {
+  let carbs = 0, na = 0, water = 0;
+  (items || []).forEach(({ id, qty }) => {
+    const p = NUTRITION_PRESETS.find(x => x.id === id);
+    if (!p) return;
+    const mult = p.unit === "ml" ? qty / p.defaultQty : qty;
+    carbs += p.carbs * mult; na += p.sodium * mult; water += p.water * mult;
+  });
+  return { carbs: Math.round(carbs), na: Math.round(na), water: Math.round(water) };
+}
+
+function PaceSparkline({ laps, segments, avgPaceMin }) {
+  const W = 400, H = 60, PAD = { t: 6, b: 18, l: 4, r: 28 };
+  const innerW = W - PAD.l - PAD.r;
+  const innerH = H - PAD.t - PAD.b;
+
+  let segPaces;
+  if (laps && laps.length > 0 && laps[0].paceMin > 0) {
+    let cum = 0;
+    const positioned = laps.map(l => { const s = cum; cum += l.dist; return { ...l, s, e: cum }; });
+    const totalDist = segments[segments.length - 1]?.endKm || cum;
+    segPaces = segments.map(seg => {
+      const relevant = positioned.filter(l => l.s < seg.endKm && l.e > seg.startKm);
+      if (!relevant.length) return avgPaceMin;
+      const tot = relevant.reduce((s, l) => s + Math.min(l.e, seg.endKm) - Math.max(l.s, seg.startKm), 0);
+      return relevant.reduce((s, l) => s + l.paceMin * (Math.min(l.e, seg.endKm) - Math.max(l.s, seg.startKm)) / tot, 0);
+    });
+  } else {
+    segPaces = segments.map(() => avgPaceMin);
+  }
+
+  const valid = segPaces.filter(p => p > 0);
+  const minP = Math.min(...valid) * 0.96;
+  const maxP = Math.max(...valid) * 1.04;
+  const totalDist = segments[segments.length - 1]?.endKm || 1;
+
+  const toX = km => PAD.l + (km / totalDist) * innerW;
+  const toY = pace => PAD.t + ((pace - minP) / (maxP - minP || 1)) * innerH;
+
+  const pts = segments.map((seg, i) => ({
+    x: toX((seg.startKm + seg.endKm) / 2),
+    y: toY(segPaces[i] || avgPaceMin),
+  }));
+  const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const areaD = `${pathD} L${pts[pts.length-1].x},${H-PAD.b} L${pts[0].x},${H-PAD.b} Z`;
+
+  return (
+    <div style={{ borderRadius: "12px", background: "rgba(15,23,42,0.6)", border: "1px solid rgba(148,163,184,0.07)", marginBottom: "12px", overflow: "hidden" }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
+        <defs>
+          <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill="url(#pg)" />
+        <path d={pathD} fill="none" stroke="#60a5fa" strokeWidth="1.8" strokeLinejoin="round" />
+        {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#60a5fa" />)}
+        <text x={W - PAD.r + 2} y={PAD.t + 6} fontSize="7" fill="#334155">fast</text>
+        <text x={W - PAD.r + 2} y={H - PAD.b} fontSize="7" fill="#334155">slow</text>
+        {segments.map(seg => (
+          <text key={seg.idx} x={toX(seg.startKm) + 2} y={H - 4} fontSize="7" fill="#334155">{seg.startKm}km</text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function NutritionTimelineStep({ runData, onDone }) {
+  const SEGMENT_KM = 5;
+  const { dist, durationMins, laps } = runData;
+  const avgPaceMin = durationMins / dist;
+
+  const segments = useMemo(() => {
+    const n = Math.ceil(dist / SEGMENT_KM);
+    return Array.from({ length: n }, (_, i) => {
+      const startKm = i * SEGMENT_KM;
+      const endKm = Math.min(startKm + SEGMENT_KM, dist);
+      return { idx: i, startKm, endKm, startMins: (startKm / dist) * durationMins, endMins: (endKm / dist) * durationMins };
+    });
+  }, [dist, durationMins]);
+
+  const [segFuel, setSegFuel] = useState({});
+  const [openSeg, setOpenSeg] = useState(null);
+
+  function toggleItem(si, id) {
+    setSegFuel(prev => {
+      const cur = prev[si] || [];
+      if (cur.find(x => x.id === id)) return { ...prev, [si]: cur.filter(x => x.id !== id) };
+      const p = NUTRITION_PRESETS.find(x => x.id === id);
+      return { ...prev, [si]: [...cur, { id, qty: p.defaultQty }] };
+    });
+  }
+
+  function adjustQty(si, id, dir) {
+    setSegFuel(prev => ({
+      ...prev,
+      [si]: (prev[si] || []).map(x => {
+        if (x.id !== id) return x;
+        const p = NUTRITION_PRESETS.find(p => p.id === id);
+        const step = p.unit === "ml" ? (p.defaultQty >= 150 ? 100 : 50) : 1;
+        return { ...x, qty: Math.max(step, x.qty + dir * step) };
+      }),
+    }));
+  }
+
+  function flatten() {
+    const acc = {};
+    Object.values(segFuel).flat().forEach(({ id, qty }) => {
+      const p = NUTRITION_PRESETS.find(x => x.id === id);
+      if (!p) return;
+      if (!acc[id]) acc[id] = { id, qty: 0, carbs: p.carbs, sodium: p.sodium, water: p.water, k: p.k, mg: p.mg };
+      acc[id].qty += qty;
+    });
+    return Object.values(acc);
+  }
+
+  const hours = durationMins / 60;
+  const grandTotal = (() => {
+    let carbs = 0, na = 0, water = 0;
+    flatten().forEach(({ id, qty }) => {
+      const p = NUTRITION_PRESETS.find(x => x.id === id);
+      if (!p) return;
+      const mult = p.unit === "ml" ? qty / p.defaultQty : qty;
+      carbs += p.carbs * mult; na += p.sodium * mult; water += p.water * mult;
+    });
+    return { carbs: Math.round(carbs), na: Math.round(na), water: Math.round(water) };
+  })();
+
+  const ITEM_COLORS = ["#60a5fa","#f59e0b","#6366f1","#8b5cf6","#94a3b8","#b45309","#64748b","#ef4444","#eab308","#ec4899","#f97316","#a3e635"];
+
+  return (
+    <div style={{ padding: "28px 20px" }}>
+      <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>STEP 4</div>
+      <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>区間ごとの補給は？</div>
+      <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "16px", lineHeight: 1.6 }}>
+        {dist.toFixed(1)}km · {fmtT(durationMins)} — 各5km区間で補給したものをタップして記録。
+      </p>
+
+      <PaceSparkline laps={laps} segments={segments} avgPaceMin={avgPaceMin} />
+
+      {/* Timeline */}
+      <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "8px", marginBottom: "4px", WebkitOverflowScrolling: "touch" }}>
+        {segments.map(seg => {
+          const items = segFuel[seg.idx] || [];
+          const isActive = openSeg === seg.idx;
+          const isEmpty = items.length === 0;
+          return (
+            <div key={seg.idx} onClick={() => setOpenSeg(isActive ? null : seg.idx)} style={{
+              minWidth: "140px", padding: "12px 10px", borderRadius: "14px", cursor: "pointer", flexShrink: 0,
+              background: isActive ? "rgba(99,102,241,0.18)" : isEmpty ? "rgba(30,41,59,0.35)" : "rgba(30,41,59,0.6)",
+              border: `1px solid ${isActive ? "rgba(99,102,241,0.45)" : isEmpty ? "rgba(148,163,184,0.08)" : "rgba(34,197,94,0.2)"}`,
+              transition: "all 0.15s",
+            }}>
+              <div style={{ fontSize: "12px", fontWeight: "800", color: isActive ? "#818cf8" : "#f1f5f9", marginBottom: "1px" }}>
+                {seg.startKm}–{Number.isInteger(seg.endKm) ? seg.endKm : seg.endKm.toFixed(1)}km
+                {isEmpty && <span style={{ marginLeft: "4px" }}>⚠️</span>}
+              </div>
+              <div style={{ fontSize: "10px", color: "#475569", marginBottom: "8px" }}>{fmtT(seg.startMins)}–{fmtT(seg.endMins)}</div>
+              {items.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                  {items.map(({ id, qty }) => {
+                    const p = NUTRITION_PRESETS.find(x => x.id === id);
+                    const ci = NUTRITION_PRESETS.findIndex(x => x.id === id);
+                    return (
+                      <div key={id} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "3px 6px", borderRadius: "20px", fontSize: "10px", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.18)", color: "#a5b4fc" }}>
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ITEM_COLORS[ci % ITEM_COLORS.length], flexShrink: 0, display: "inline-block" }} />
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p?.name}</span>
+                        <span style={{ color: "#64748b", flexShrink: 0 }}>{qty}{p?.unit}</span>
+                        <span onClick={e => { e.stopPropagation(); toggleItem(seg.idx, id); }} style={{ cursor: "pointer", color: "#475569", marginLeft: "2px", fontSize: "11px" }}>×</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: "11px", color: "#334155", paddingTop: "6px" }}>+ タップで追加</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Item picker */}
+      {openSeg !== null && segments[openSeg] && (
+        <div style={{ borderRadius: "14px", background: "rgba(10,14,23,0.97)", border: "1px solid rgba(99,102,241,0.2)", marginBottom: "16px", overflow: "hidden", marginTop: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", borderBottom: "1px solid rgba(148,163,184,0.07)" }}>
+            <span style={{ fontSize: "13px", fontWeight: "700", color: "#f1f5f9", flex: 1 }}>
+              {segments[openSeg].startKm}–{Number.isInteger(segments[openSeg].endKm) ? segments[openSeg].endKm : segments[openSeg].endKm.toFixed(1)}km の補給
+            </span>
+            <button onClick={() => setOpenSeg(null)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "20px", lineHeight: 1, padding: 0 }}>×</button>
+          </div>
+          <div style={{ padding: "10px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+            {NUTRITION_PRESETS.map((preset, ci) => {
+              const sel = (segFuel[openSeg] || []).find(x => x.id === preset.id);
+              return (
+                <div key={preset.id}>
+                  <div onClick={() => toggleItem(openSeg, preset.id)} style={{
+                    display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderRadius: "10px", cursor: "pointer",
+                    background: sel ? "rgba(99,102,241,0.15)" : "rgba(30,41,59,0.5)",
+                    border: `1px solid ${sel ? "rgba(99,102,241,0.3)" : "rgba(148,163,184,0.06)"}`,
+                  }}>
+                    <div style={{ width: "8px", height: "8px", borderRadius: "50%", flexShrink: 0, background: sel ? ITEM_COLORS[ci % ITEM_COLORS.length] : "#334155" }} />
+                    <span style={{ fontSize: "13px", color: sel ? "#c4b5fd" : "#94a3b8", fontWeight: sel ? "700" : "400", flex: 1 }}>{preset.name}</span>
+                  </div>
+                  {sel && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px" }}>
+                      <button onClick={() => adjustQty(openSeg, preset.id, -1)} style={{ width: "24px", height: "24px", borderRadius: "6px", border: "none", background: "rgba(148,163,184,0.1)", color: "#94a3b8", cursor: "pointer", fontSize: "15px" }}>−</button>
+                      <span style={{ flex: 1, textAlign: "center", fontSize: "12px", fontWeight: "700", color: "#f1f5f9" }}>{sel.qty}{preset.unit}</span>
+                      <button onClick={() => adjustQty(openSeg, preset.id, 1)} style={{ width: "24px", height: "24px", borderRadius: "6px", border: "none", background: "rgba(99,102,241,0.15)", color: "#818cf8", cursor: "pointer", fontSize: "15px" }}>＋</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Summary totals */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "12px" }}>
+        {[
+          { label: "糖質 total", v: grandTotal.carbs, unit: "g",  sub: `${Math.round(grandTotal.carbs / hours)}g/h` },
+          { label: "Na total",   v: grandTotal.na,    unit: "mg", sub: `${Math.round(grandTotal.na / hours)}mg/h` },
+          { label: "水分 total", v: grandTotal.water,  unit: "ml", sub: `${Math.round(grandTotal.water / hours)}ml/h` },
+        ].map(({ label, v, unit, sub }) => (
+          <div key={label} style={{ ...cardBase, textAlign: "center", padding: "12px 6px" }}>
+            <div style={{ fontSize: "9px", color: "#64748b", marginBottom: "4px" }}>{label}</div>
+            <div style={{ fontSize: "18px", fontWeight: "900", color: "#f1f5f9" }}>{v}<span style={{ fontSize: "10px", marginLeft: "1px" }}>{unit}</span></div>
+            <div style={{ fontSize: "9px", color: "#475569", marginTop: "2px" }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-segment breakdown */}
+      <div style={{ display: "flex", gap: "6px", overflowX: "auto", marginBottom: "20px", WebkitOverflowScrolling: "touch" }}>
+        {segments.map(seg => {
+          const t = segTotals(segFuel[seg.idx]);
+          const isEmpty = !(segFuel[seg.idx]?.length);
+          const isActive = openSeg === seg.idx;
+          return (
+            <div key={seg.idx} onClick={() => setOpenSeg(isActive ? null : seg.idx)} style={{
+              minWidth: "74px", padding: "9px 6px", borderRadius: "10px", textAlign: "center", cursor: "pointer", flexShrink: 0,
+              background: isEmpty ? "rgba(239,68,68,0.06)" : isActive ? "rgba(99,102,241,0.15)" : "rgba(30,41,59,0.4)",
+              border: `1px solid ${isEmpty ? "rgba(239,68,68,0.18)" : isActive ? "rgba(99,102,241,0.3)" : "rgba(148,163,184,0.06)"}`,
+            }}>
+              <div style={{ fontSize: "9px", color: "#475569", marginBottom: "3px" }}>{seg.startKm}–{Number.isInteger(seg.endKm) ? seg.endKm : seg.endKm.toFixed(1)}km</div>
+              {isEmpty
+                ? <div style={{ fontSize: "10px", color: "#ef4444", fontWeight: "700" }}>補給なし</div>
+                : <><div style={{ fontSize: "13px", fontWeight: "800", color: "#fbbf24" }}>{t.carbs}g</div><div style={{ fontSize: "9px", color: "#64748b" }}>Na {t.na}mg</div></>
+              }
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={() => onDone(flatten())} style={{
+        width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+        boxShadow: "0 8px 24px rgba(99,102,241,0.3)",
+      }}>この補給内容を分析する →</button>
+    </div>
+  );
 }
 
 // ─── Persistence ────────────────────────────────────────────────────────────
@@ -743,92 +1020,12 @@ function FuelLabOnboarding({ user, onLogout }) {
           </div>
         )}
 
-        {/* ── Step 4: Nutrition ── */}
+        {/* ── Step 4: Nutrition Timeline ── */}
         {step === 4 && (
-          <div style={{ padding: "28px 20px" }}>
-            <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>STEP 4</div>
-            <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "6px" }}>そのランの補給は？</div>
-            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "6px", lineHeight: 1.6 }}>補給したものを全て選んでください。量も大まかでOKです。</p>
-
-            {/* Context bar */}
-            {effectiveRunData() && (
-              <div style={{ padding: "10px 14px", borderRadius: "10px", background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.06)", marginBottom: "20px", display: "flex", gap: "16px", fontSize: "11px", color: "#64748b" }}>
-                <span>📍 {effectiveRunData().dist.toFixed(1)}km</span>
-                <span>⏱ {fmt(effectiveRunData().durationMins)}</span>
-                {effectiveRunData().ascent > 0 && <span>↑{effectiveRunData().ascent}m</span>}
-              </div>
-            )}
-
-            {/* Item grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "20px" }}>
-              {NUTRITION_PRESETS.map(preset => {
-                const selected = nutritionItems.find(i => i.id === preset.id);
-                const qtyStep = preset.unit === "ml" ? (preset.defaultQty >= 150 ? 100 : 50) : 1;
-                return (
-                  <div key={preset.id} onClick={() => toggleNutrition(preset.id)} style={{
-                    padding: "12px 10px", borderRadius: "14px", cursor: "pointer",
-                    background: selected ? "rgba(34,197,94,0.1)" : "rgba(30,41,59,0.5)",
-                    border: `1px solid ${selected ? "rgba(34,197,94,0.4)" : "rgba(148,163,184,0.08)"}`,
-                    transition: "all 0.2s",
-                  }}>
-                    {/* Header row */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: selected ? "8px" : "0" }}>
-                      <span style={{ fontSize: "20px" }}>{preset.icon}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "14px", fontWeight: "700", color: selected ? "#4ade80" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preset.name}</div>
-                        {/* Subtitle — WCAG AA: #94a3b8 on dark bg ≈ 6.3:1 */}
-                        <div style={{ fontSize: "12px", color: "#94a3b8" }}>
-                          {selected
-                            ? `糖${selected.carbs}g Na${selected.sodium}mg`
-                            : `${preset.carbs > 0 ? `糖${preset.carbs}g ` : ""}${preset.sodium > 0 ? `Na${preset.sodium}mg` : preset.carbs === 0 ? "水分補給" : ""}`
-                          }
-                        </div>
-                      </div>
-                      {selected && <div style={{ width: "15px", height: "15px", borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "8px", flexShrink: 0 }}>✓</div>}
-                    </div>
-
-                    {/* Selected: qty + editable nutrition */}
-                    {selected && (
-                      <div onClick={e => e.stopPropagation()}>
-                        {/* Qty row */}
-                        <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "6px" }}>
-                          <button onClick={() => updateQty(preset.id, Math.max(0, selected.qty - qtyStep))}
-                            style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(148,163,184,0.15)", color: "#94a3b8", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>−</button>
-                          <span style={{ fontSize: "13px", fontWeight: "700", color: "#f1f5f9", flex: 1, textAlign: "center" }}>{selected.qty}{preset.unit}</span>
-                          <button onClick={() => updateQty(preset.id, selected.qty + qtyStep)}
-                            style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(34,197,94,0.15)", color: "#4ade80", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>＋</button>
-                        </div>
-                        {/* Editable nutrition row */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" }}>
-                          <label style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                            <span style={{ fontSize: "9px", color: "#94a3b8", fontWeight: "600" }}>糖質 (g/{preset.unit === "ml" ? `${preset.defaultQty}ml` : preset.unit})</span>
-                            <input
-                              type="number" min="0" max="999" value={selected.carbs}
-                              onChange={e => updateItemNutrition(preset.id, "carbs", e.target.value)}
-                              style={{ width: "100%", padding: "4px 6px", borderRadius: "6px", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "12px", fontWeight: "700", outline: "none", boxSizing: "border-box" }}
-                            />
-                          </label>
-                          <label style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                            <span style={{ fontSize: "9px", color: "#94a3b8", fontWeight: "600" }}>Na (mg/{preset.unit === "ml" ? `${preset.defaultQty}ml` : preset.unit})</span>
-                            <input
-                              type="number" min="0" max="9999" value={selected.sodium}
-                              onChange={e => updateItemNutrition(preset.id, "sodium", e.target.value)}
-                              style={{ width: "100%", padding: "4px 6px", borderRadius: "6px", border: "1px solid rgba(196,181,253,0.3)", background: "rgba(196,181,253,0.08)", color: "#c4b5fd", fontSize: "12px", fontWeight: "700", outline: "none", boxSizing: "border-box" }}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Live total */}
-            {nutritionItems.length > 0 && <NutritionTotals items={nutritionItems} />}
-
-            <NextButton onClick={() => setStep(5)} label="次へ（体調記録）" />
-          </div>
+          <NutritionTimelineStep
+            runData={effectiveRunData()}
+            onDone={items => { setNutritionItems(items); setStep(5); }}
+          />
         )}
 
         {/* ── Step 5: Symptoms ── */}
