@@ -201,13 +201,12 @@ function computeAnalysis(runData, nutritionItems, symptoms, runType) {
   let totalCarbs = 0, totalWater = 0, totalSodium = 0, totalK = 0, totalMg = 0;
   nutritionItems.forEach(item => {
     const p = NUTRITION_PRESETS.find(x => x.id === item.id);
-    if (!p) return;
-    const mult = p.unit === "ml" ? item.qty / p.defaultQty : item.qty;
-    totalCarbs  += (item.carbs  != null ? item.carbs  : p.carbs)  * mult;
-    totalWater  += (item.water  != null ? item.water  : p.water)  * mult;
-    totalSodium += (item.sodium != null ? item.sodium : p.sodium) * mult;
-    totalK      += (item.k      != null ? item.k      : (p.k  ?? 0)) * mult;
-    totalMg     += (item.mg     != null ? item.mg     : (p.mg ?? 0)) * mult;
+    const mult = (p?.unit === "ml") ? item.qty / p.defaultQty : item.qty;
+    totalCarbs  += (item.carbs  ?? p?.carbs  ?? 0) * mult;
+    totalWater  += (item.water  ?? p?.water  ?? 0) * mult;
+    totalSodium += (item.sodium ?? p?.sodium ?? 0) * mult;
+    totalK      += (item.k      ?? p?.k      ?? 0) * mult;
+    totalMg     += (item.mg     ?? p?.mg     ?? 0) * mult;
   });
 
   // 推奨量 / 時間（エビデンスベース）
@@ -312,11 +311,12 @@ function fmtT(mins) {
 
 function segTotals(items) {
   let carbs = 0, na = 0, water = 0;
-  (items || []).forEach(({ id, qty }) => {
-    const p = NUTRITION_PRESETS.find(x => x.id === id);
-    if (!p) return;
-    const mult = p.unit === "ml" ? qty / p.defaultQty : qty;
-    carbs += p.carbs * mult; na += p.sodium * mult; water += p.water * mult;
+  (items || []).forEach(item => {
+    const p = NUTRITION_PRESETS.find(x => x.id === item.id);
+    const mult = p?.unit === "ml" ? item.qty / p.defaultQty : item.qty;
+    carbs += (item.carbs  ?? p?.carbs  ?? 0) * mult;
+    na    += (item.sodium ?? p?.sodium ?? 0) * mult;
+    water += (item.water  ?? p?.water  ?? 0) * mult;
   });
   return { carbs: Math.round(carbs), na: Math.round(na), water: Math.round(water) };
 }
@@ -394,6 +394,19 @@ function NutritionTimelineStep({ runData, onDone }) {
 
   const [segFuel, setSegFuel] = useState({});
   const [openSeg, setOpenSeg] = useState(null);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customDraft, setCustomDraft] = useState({ name: "", carbs: 0, water: 0, sodium: 0, k: 0, mg: 0, qty: 1, unit: "個" });
+
+  function addCustomItem(si) {
+    if (!customDraft.name.trim()) return;
+    const id = `custom_${Date.now()}`;
+    setSegFuel(prev => ({
+      ...prev,
+      [si]: [...(prev[si] || []), { id, ...customDraft }],
+    }));
+    setCustomDraft({ name: "", carbs: 0, water: 0, sodium: 0, k: 0, mg: 0, qty: 1, unit: "個" });
+    setShowCustomForm(false);
+  }
 
   function toggleItem(si, id) {
     setSegFuel(prev => {
@@ -418,10 +431,17 @@ function NutritionTimelineStep({ runData, onDone }) {
 
   function flatten() {
     const acc = {};
-    Object.values(segFuel).flat().forEach(({ id, qty }) => {
+    Object.values(segFuel).flat().forEach(item => {
+      const { id, qty } = item;
       const p = NUTRITION_PRESETS.find(x => x.id === id);
-      if (!p) return;
-      if (!acc[id]) acc[id] = { id, qty: 0, carbs: p.carbs, sodium: p.sodium, water: p.water, k: p.k, mg: p.mg };
+      if (!acc[id]) acc[id] = {
+        id, qty: 0,
+        carbs:  item.carbs  ?? p?.carbs  ?? 0,
+        sodium: item.sodium ?? p?.sodium ?? 0,
+        water:  item.water  ?? p?.water  ?? 0,
+        k:      item.k      ?? p?.k      ?? 0,
+        mg:     item.mg     ?? p?.mg     ?? 0,
+      };
       acc[id].qty += qty;
     });
     return Object.values(acc);
@@ -430,11 +450,12 @@ function NutritionTimelineStep({ runData, onDone }) {
   const hours = durationMins / 60;
   const grandTotal = (() => {
     let carbs = 0, na = 0, water = 0;
-    flatten().forEach(({ id, qty }) => {
-      const p = NUTRITION_PRESETS.find(x => x.id === id);
-      if (!p) return;
-      const mult = p.unit === "ml" ? qty / p.defaultQty : qty;
-      carbs += p.carbs * mult; na += p.sodium * mult; water += p.water * mult;
+    flatten().forEach(item => {
+      const p = NUTRITION_PRESETS.find(x => x.id === item.id);
+      const mult = p?.unit === "ml" ? item.qty / p.defaultQty : item.qty;
+      carbs += (item.carbs  ?? 0) * mult;
+      na    += (item.sodium ?? 0) * mult;
+      water += (item.water  ?? 0) * mult;
     });
     return { carbs: Math.round(carbs), na: Math.round(na), water: Math.round(water) };
   })();
@@ -471,15 +492,18 @@ function NutritionTimelineStep({ runData, onDone }) {
               <div style={{ fontSize: "10px", color: "#475569", marginBottom: "8px" }}>{fmtT(seg.startMins)}–{fmtT(seg.endMins)}</div>
               {items.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                  {items.map(({ id, qty }) => {
-                    const p = NUTRITION_PRESETS.find(x => x.id === id);
-                    const ci = NUTRITION_PRESETS.findIndex(x => x.id === id);
+                  {items.map((item) => {
+                    const p = NUTRITION_PRESETS.find(x => x.id === item.id);
+                    const ci = NUTRITION_PRESETS.findIndex(x => x.id === item.id);
+                    const displayName = item.name || p?.name || "?";
+                    const displayUnit = item.unit || p?.unit || "";
+                    const color = item.id.startsWith("custom_") ? "#f59e0b" : ITEM_COLORS[ci % ITEM_COLORS.length];
                     return (
-                      <div key={id} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "3px 6px", borderRadius: "20px", fontSize: "10px", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.18)", color: "#a5b4fc" }}>
-                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ITEM_COLORS[ci % ITEM_COLORS.length], flexShrink: 0, display: "inline-block" }} />
-                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p?.name}</span>
-                        <span style={{ color: "#64748b", flexShrink: 0 }}>{qty}{p?.unit}</span>
-                        <span onClick={e => { e.stopPropagation(); toggleItem(seg.idx, id); }} style={{ cursor: "pointer", color: "#475569", marginLeft: "2px", fontSize: "11px" }}>×</span>
+                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "3px 6px", borderRadius: "20px", fontSize: "10px", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.18)", color: "#a5b4fc" }}>
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: color, flexShrink: 0, display: "inline-block" }} />
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</span>
+                        <span style={{ color: "#64748b", flexShrink: 0 }}>{item.qty}{displayUnit}</span>
+                        <span onClick={e => { e.stopPropagation(); toggleItem(seg.idx, item.id); }} style={{ cursor: "pointer", color: "#475569", marginLeft: "2px", fontSize: "11px" }}>×</span>
                       </div>
                     );
                   })}
@@ -524,6 +548,78 @@ function NutritionTimelineStep({ runData, onDone }) {
                 </div>
               );
             })}
+
+            {/* Custom item button */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              {!showCustomForm ? (
+                <button onClick={() => setShowCustomForm(true)} style={{
+                  width: "100%", padding: "10px 12px", borderRadius: "10px", cursor: "pointer",
+                  background: "rgba(245,158,11,0.08)", border: "1px dashed rgba(245,158,11,0.3)",
+                  color: "#f59e0b", fontSize: "13px", fontWeight: "700", textAlign: "left",
+                }}>
+                  ✨ カスタムアイテムを追加
+                </button>
+              ) : (
+                <div style={{ borderRadius: "12px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#f59e0b", marginBottom: "2px" }}>✨ カスタムアイテム</div>
+
+                  {/* Name */}
+                  <input
+                    placeholder="アイテム名（例：自作ジェル）"
+                    value={customDraft.name}
+                    onChange={e => setCustomDraft(d => ({ ...d, name: e.target.value }))}
+                    style={{ ...inputStyle, fontSize: "12px", padding: "7px 10px" }}
+                  />
+
+                  {/* Qty + Unit */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                    <label style={{ fontSize: "10px", color: "#64748b", display: "flex", flexDirection: "column", gap: "3px" }}>
+                      1回の量
+                      <input type="number" min="1" value={customDraft.qty}
+                        onChange={e => setCustomDraft(d => ({ ...d, qty: +e.target.value || 1 }))}
+                        style={{ ...inputStyle, fontSize: "12px", padding: "7px 10px" }} />
+                    </label>
+                    <label style={{ fontSize: "10px", color: "#64748b", display: "flex", flexDirection: "column", gap: "3px" }}>
+                      単位
+                      <select value={customDraft.unit} onChange={e => setCustomDraft(d => ({ ...d, unit: e.target.value }))}
+                        style={{ ...inputStyle, fontSize: "12px", padding: "7px 10px" }}>
+                        {["個","本","粒","g","ml","袋","枚"].map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </label>
+                  </div>
+
+                  {/* Nutrition grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
+                    {[
+                      { key: "carbs",  label: "糖質 (g)",  color: "#fbbf24" },
+                      { key: "water",  label: "水分 (ml)", color: "#60a5fa" },
+                      { key: "sodium", label: "Na (mg)",   color: "#c4b5fd" },
+                      { key: "k",      label: "K (mg)",    color: "#4ade80" },
+                      { key: "mg",     label: "Mg (mg)",   color: "#f97316" },
+                    ].map(({ key, label, color }) => (
+                      <label key={key} style={{ fontSize: "10px", color: "#64748b", display: "flex", flexDirection: "column", gap: "3px" }}>
+                        {label}
+                        <input type="number" min="0" value={customDraft[key]}
+                          onChange={e => setCustomDraft(d => ({ ...d, [key]: +e.target.value || 0 }))}
+                          style={{ width: "100%", padding: "5px 6px", borderRadius: "6px", border: `1px solid ${color}33`, background: `${color}11`, color, fontSize: "12px", fontWeight: "700", outline: "none", boxSizing: "border-box" }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button onClick={() => { setShowCustomForm(false); setCustomDraft({ name: "", carbs: 0, water: 0, sodium: 0, k: 0, mg: 0, qty: 1, unit: "個" }); }}
+                      style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: "rgba(148,163,184,0.1)", color: "#64748b", cursor: "pointer", fontSize: "12px" }}>
+                      キャンセル
+                    </button>
+                    <button onClick={() => addCustomItem(openSeg)} disabled={!customDraft.name.trim()}
+                      style={{ flex: 2, padding: "8px", borderRadius: "8px", border: "none", background: customDraft.name.trim() ? "rgba(245,158,11,0.2)" : "rgba(30,41,59,0.3)", color: customDraft.name.trim() ? "#f59e0b" : "#334155", cursor: customDraft.name.trim() ? "pointer" : "default", fontSize: "12px", fontWeight: "700" }}>
+                      追加する
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
