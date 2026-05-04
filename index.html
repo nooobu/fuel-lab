@@ -40,6 +40,39 @@ const NUTRITION_PRESETS = [
   { id: "anpan",   icon: "🍞", name: "あんぱん",         carbs: 45, water: 0,   sodium: 200, k:  90, mg: 15, unit: "個", defaultQty: 1   },
 ];
 
+// ─── Product Database ──────────────────────────────────────────────────────
+const PRODUCT_DATABASE = [
+  // ジェル
+  { id:"db_mag_on",       type:"gel",   brand:"Mag-on",        icon:"🟢", name:"Mag-on エナジージェル",                  serving:"1袋 41g",  unit:"袋", defaultQty:1, carbs:30, water:0,   sodium:55,  k:0,   mg:50, note:"水溶性Mg50mg。アップル・グレープ・梅" },
+  { id:"db_mag_on_caf",   type:"gel",   brand:"Mag-on",        icon:"☕", name:"Mag-on エナジージェル カフェイン",        serving:"1袋 41g",  unit:"袋", defaultQty:1, carbs:30, water:0,   sodium:0,   k:0,   mg:50, note:"Mg50mg＋カフェイン25mg" },
+  { id:"db_mag_jelly",    type:"gel",   brand:"Mag-on",        icon:"🟢", name:"Mag-on ジェリータイプ",                  serving:"1袋 41g",  unit:"袋", defaultQty:1, carbs:30, water:0,   sodium:40,  k:180, mg:50, note:"K180mg配合。ピーチ・バナナ" },
+  { id:"db_medalist",     type:"gel",   brand:"Medalist",      icon:"🍎", name:"メダリスト エナジージェル",              serving:"1袋 45g",  unit:"袋", defaultQty:1, carbs:27, water:0,   sodium:83,  k:0,   mg:0,  note:"クエン酸配合。はちみつ＋果汁" },
+  { id:"db_medalist_caf", type:"gel",   brand:"Medalist",      icon:"☕", name:"メダリスト カフェイン200冴",             serving:"1袋 45g",  unit:"袋", defaultQty:1, carbs:26, water:0,   sodium:83,  k:0,   mg:0,  note:"カフェイン200mg配合" },
+  { id:"db_aminosaur",    type:"gel",   brand:"AMINO SAURUS",  icon:"🦕", name:"アミノサウルス ジェル",                  serving:"1袋 45g",  unit:"袋", defaultQty:1, carbs:25, water:0,   sodium:236, k:0,   mg:50, note:"アルギニン2000mg＋シトルリン1000mg。高Na" },
+  { id:"db_aminosaur_el", type:"gel",   brand:"AMINO SAURUS",  icon:"🦕", name:"アミノサウルス ジェル エリート",         serving:"1袋 55g",  unit:"袋", defaultQty:1, carbs:31, water:0,   sodium:204, k:0,   mg:10, note:"大容量55g。カフェイン入り" },
+  { id:"db_winzone",      type:"gel",   brand:"WINZONE",       icon:"💪", name:"ウィンゾーン エナジージェル",            serving:"1袋 40g",  unit:"袋", defaultQty:1, carbs:29, water:0,   sodium:0,   k:0,   mg:50, note:"Mg50mg＋ヒドロキシクエン酸100mg" },
+  { id:"db_gu",           type:"gel",   brand:"GU Energy",     icon:"⚡", name:"GU エナジージェル",                      serving:"1袋 32g",  unit:"袋", defaultQty:1, carbs:22, water:0,   sodium:55,  k:30,  mg:0,  note:"BCAA450mg配合。マルト＋フルクトース" },
+  { id:"db_maurten100",   type:"gel",   brand:"Maurten",       icon:"🌊", name:"Maurten Gel 100",                       serving:"1袋 40g",  unit:"袋", defaultQty:1, carbs:25, water:0,   sodium:85,  k:0,   mg:0,  note:"ハイドロゲル技術。胃腸に優しい" },
+  { id:"db_maurten_caf",  type:"gel",   brand:"Maurten",       icon:"☕", name:"Maurten Gel 100 Caf 100",               serving:"1袋 40g",  unit:"袋", defaultQty:1, carbs:25, water:0,   sodium:85,  k:0,   mg:0,  note:"カフェイン100mg。レース後半向け" },
+  // ドリンク / ゼリー
+  { id:"db_av_multi",     type:"drink", brand:"アミノバイタル", icon:"🥤", name:"アミノバイタル マルチエネルギー",         serving:"1袋 180g", unit:"袋", defaultQty:1, carbs:39, water:140, sodium:71,  k:40,  mg:0,  note:"ゼリータイプ。水分＋糖質をまとめて" },
+  { id:"db_av_perfect",   type:"drink", brand:"アミノバイタル", icon:"💎", name:"アミノバイタル パーフェクトエネルギー",   serving:"1袋 130g", unit:"袋", defaultQty:1, carbs:41, water:100, sodium:16,  k:0,   mg:0,  note:"アミノ酸5000mg配合。スタート直前向け" },
+  // バー
+  { id:"db_powerbar",     type:"bar",   brand:"PowerBar",      icon:"🍫", name:"パワーバー エナジーバー",                serving:"1本 58g",  unit:"本", defaultQty:1, carbs:42, water:0,   sodium:100, k:100, mg:20, note:"長時間運動向けのバータイプ" },
+];
+
+// ─── Custom Drink Ingredients ───────────────────────────────────────────────
+const DRINK_INGREDIENTS = [
+  { id:"cd",   name:"クラスターデキストリン", abbr:"CD",   color:"#fbbf24", unit:"g",  carbsPerG:1.0, naPerG:0,   mgPerG:0, note:"高分子・低浸透圧。胃もたれしにくい" },
+  { id:"md",   name:"マルトデキストリン",     abbr:"MD",   color:"#f97316", unit:"g",  carbsPerG:1.0, naPerG:0,   mgPerG:0, note:"コスパ高い多糖類。グルコース輸送体使用" },
+  { id:"fru",  name:"フラクトース",           abbr:"Fru",  color:"#fb923c", unit:"g",  carbsPerG:1.0, naPerG:0,   mgPerG:0, note:"果糖。MDと1:0.8で最大吸収量UP" },
+  { id:"nacl", name:"食塩（NaCl）",           abbr:"Na",   color:"#e2e8f0", unit:"g",  carbsPerG:0,   naPerG:393, mgPerG:0, note:"1g → Na 393mg。発汗補充に必須" },
+  { id:"mgs",  name:"マグネシウム",           abbr:"Mg",   color:"#34d399", unit:"mg", carbsPerG:0,   naPerG:0,   mgPerG:1, note:"攣り・疲労対策。50mg/h 目安" },
+  { id:"ca",   name:"クエン酸",               abbr:"CA",   color:"#a78bfa", unit:"g",  carbsPerG:0,   naPerG:0,   mgPerG:0, note:"酸味＋疲労回復サポート。2g程度まで" },
+  { id:"bcaa", name:"BCAA",                   abbr:"BCAA", color:"#60a5fa", unit:"g",  carbsPerG:0,   naPerG:0,   mgPerG:0, note:"筋分解抑制。2:1:1（Val:Leu:Ile）" },
+  { id:"caf",  name:"カフェイン",             abbr:"Caf",  color:"#f472b6", unit:"mg", carbsPerG:0,   naPerG:0,   mgPerG:0, note:"集中力・持久力向上。100mg程度まで" },
+];
+
 const SYMPTOM_OPTIONS = [
   { id: "none",      icon: "😊", label: "問題なし",         cause: ""                            },
   { id: "headache",  icon: "🤕", label: "頭痛",             cause: "脱水・Na不足"                 },
@@ -341,7 +374,8 @@ function PaceSparkline({ laps, segments, avgPaceMin }) {
     segPaces = segments.map(() => avgPaceMin);
   }
 
-  const valid = segPaces.filter(p => p > 0);
+  const valid = segPaces.filter(p => p > 0 && isFinite(p));
+  if (valid.length === 0) return null;
   const minP = Math.min(...valid) * 0.96;
   const maxP = Math.max(...valid) * 1.04;
   const totalDist = segments[segments.length - 1]?.endKm || 1;
@@ -838,6 +872,7 @@ function FuelLabOnboarding({ user, onLogout }) {
     if (runData) return runData;
     if (manualMode) {
       const durationMins = manualRun.hours * 60 + manualRun.mins;
+      if (!manualRun.dist || !durationMins) return null;
       return { title: manualRun.title || "トレーニングラン", date: "", dist: manualRun.dist, durationMins, ascent: manualRun.ascent, avgHR: manualRun.avgHR, maxHR: 0, calories: 0 };
     }
     return null;
@@ -1270,11 +1305,10 @@ function NutritionTotals({ items }) {
   let carbs = 0, water = 0, sodium = 0;
   items.forEach(item => {
     const p = NUTRITION_PRESETS.find(x => x.id === item.id);
-    if (!p) return;
-    const mult = p.unit === "ml" ? item.qty / p.defaultQty : item.qty;
-    carbs  += ((item.carbs  != null ? item.carbs  : p.carbs))  * mult;
-    water  += ((item.water  != null ? item.water  : p.water))  * mult;
-    sodium += ((item.sodium != null ? item.sodium : p.sodium)) * mult;
+    const mult = p ? (p.unit === "ml" ? item.qty / p.defaultQty : item.qty) : item.qty;
+    carbs  += (item.carbs  != null ? item.carbs  : (p?.carbs  ?? 0)) * mult;
+    water  += (item.water  != null ? item.water  : (p?.water  ?? 0)) * mult;
+    sodium += (item.sodium != null ? item.sodium : (p?.sodium ?? 0)) * mult;
   });
   return (
     <div style={{ padding: "12px 14px", borderRadius: "12px", background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.08)", marginBottom: "4px" }}>
@@ -1665,10 +1699,205 @@ function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan })
 }
 
 // ─── Nutrition Edit Modal ────────────────────────────────────────────────────
+function ProductSearchModal({ selectedIds, onAdd, onRemove, onClose }) {
+  const [search, setSearch] = React.useState("");
+  const [typeFilter, setTypeFilter] = React.useState("all");
+
+  const TYPE_LABELS = { all: "すべて", gel: "ジェル", drink: "ドリンク/ゼリー", bar: "バー" };
+
+  const filtered = PRODUCT_DATABASE.filter(p => {
+    const matchType = typeFilter === "all" || p.type === typeFilter;
+    const q = search.toLowerCase();
+    const matchSearch = !q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || (p.note && p.note.toLowerCase().includes(q));
+    return matchType && matchSearch;
+  });
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.93)", zIndex:300, overflowY:"auto" }}>
+      <div style={{ maxWidth:430, margin:"0 auto", padding:"20px 16px 100px", fontFamily:"'Noto Sans JP','SF Pro Display',-apple-system,sans-serif", color:"#e2e8f0" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"16px", paddingTop:"8px" }}>
+          <button onClick={onClose} style={{ background:"rgba(30,41,59,0.8)", border:"1px solid rgba(148,163,184,0.1)", color:"#94a3b8", borderRadius:"10px", padding:"8px 14px", cursor:"pointer", fontSize:"13px", fontWeight:"700" }}>← 戻る</button>
+          <div>
+            <div style={{ fontSize:"16px", fontWeight:"800", color:"#f1f5f9" }}>🗃️ 商品データベース</div>
+            <div style={{ fontSize:"11px", color:"#64748b" }}>人気ブランドのジェル・ドリンク</div>
+          </div>
+        </div>
+        <input placeholder="🔍 商品名・ブランドで検索..." value={search} onChange={e => setSearch(e.target.value)}
+          style={{ width:"100%", padding:"12px 14px", borderRadius:"12px", border:"1px solid rgba(148,163,184,0.15)", background:"rgba(15,23,42,0.8)", color:"#e2e8f0", fontSize:"14px", outline:"none", fontFamily:"inherit", marginBottom:"10px" }} />
+        <div style={{ display:"flex", gap:"6px", marginBottom:"16px", overflowX:"auto" }}>
+          {Object.entries(TYPE_LABELS).map(([val, label]) => (
+            <button key={val} onClick={() => setTypeFilter(val)} style={{
+              padding:"6px 14px", borderRadius:"20px", border:"none", cursor:"pointer", whiteSpace:"nowrap",
+              background: typeFilter === val ? "rgba(99,102,241,0.25)" : "rgba(30,41,59,0.6)",
+              color: typeFilter === val ? "#a5b4fc" : "#64748b", fontSize:"12px", fontWeight:"700",
+            }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+          {filtered.map(product => {
+            const isSelected = selectedIds.includes(product.id);
+            return (
+              <div key={product.id} onClick={() => isSelected ? onRemove(product.id) : onAdd(product)} style={{
+                padding:"14px", borderRadius:"14px", cursor:"pointer",
+                background: isSelected ? "rgba(34,197,94,0.1)" : "rgba(30,41,59,0.5)",
+                border: `1px solid ${isSelected ? "rgba(34,197,94,0.35)" : "rgba(148,163,184,0.08)"}`,
+              }}>
+                <div style={{ display:"flex", alignItems:"flex-start", gap:"12px" }}>
+                  <span style={{ fontSize:"22px", flexShrink:0 }}>{product.icon}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"6px", marginBottom:"2px" }}>
+                      <span style={{ fontSize:"10px", fontWeight:"700", color:"#64748b", background:"rgba(100,116,139,0.15)", padding:"1px 7px", borderRadius:"6px" }}>{product.brand}</span>
+                      {isSelected && <span style={{ fontSize:"10px", fontWeight:"700", color:"#4ade80" }}>✓ 追加済み</span>}
+                    </div>
+                    <div style={{ fontSize:"13px", fontWeight:"800", color: isSelected ? "#4ade80" : "#f1f5f9", marginBottom:"3px" }}>{product.name}</div>
+                    <div style={{ fontSize:"11px", color:"#64748b", marginBottom:"5px" }}>{product.serving}</div>
+                    <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                      {product.carbs > 0  && <span style={{ fontSize:"10px", fontWeight:"700", color:"#fbbf24", background:"rgba(251,191,36,0.12)", padding:"2px 7px", borderRadius:"6px" }}>糖 {product.carbs}g</span>}
+                      {product.sodium > 0 && <span style={{ fontSize:"10px", fontWeight:"700", color:"#c4b5fd", background:"rgba(196,181,253,0.12)", padding:"2px 7px", borderRadius:"6px" }}>Na {product.sodium}mg</span>}
+                      {product.k > 0      && <span style={{ fontSize:"10px", fontWeight:"700", color:"#4ade80", background:"rgba(74,222,128,0.12)", padding:"2px 7px", borderRadius:"6px" }}>K {product.k}mg</span>}
+                      {product.mg > 0     && <span style={{ fontSize:"10px", fontWeight:"700", color:"#34d399", background:"rgba(52,211,153,0.12)", padding:"2px 7px", borderRadius:"6px" }}>Mg {product.mg}mg</span>}
+                      {product.water > 0  && <span style={{ fontSize:"10px", fontWeight:"700", color:"#60a5fa", background:"rgba(96,165,250,0.12)", padding:"2px 7px", borderRadius:"6px" }}>水 {product.water}ml</span>}
+                    </div>
+                    {product.note && <div style={{ fontSize:"10px", color:"#475569", marginTop:"5px" }}>{product.note}</div>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && <div style={{ textAlign:"center", padding:"40px 0", color:"#475569", fontSize:"13px" }}>「{search}」は見つかりませんでした</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomDrinkModal({ onAdd, onClose }) {
+  const [name, setName] = React.useState("マイドリンク");
+  const [waterAmt, setWaterAmt] = React.useState(500);
+  const [amounts, setAmounts] = React.useState({});
+
+  const setAmt = (id, val) => setAmounts(prev => ({ ...prev, [id]: Math.max(0, val) }));
+
+  const totalCarbs = DRINK_INGREDIENTS.reduce((s, ing) => s + (amounts[ing.id] || 0) * ing.carbsPerG, 0);
+  const totalNa    = DRINK_INGREDIENTS.reduce((s, ing) => s + (amounts[ing.id] || 0) * ing.naPerG,    0);
+  const totalMg    = DRINK_INGREDIENTS.reduce((s, ing) => s + (amounts[ing.id] || 0) * ing.mgPerG,    0);
+
+  function handleAdd() {
+    onAdd({
+      id: `custom_drink_${Date.now()}`,
+      name: name || "カスタムドリンク",
+      qty: 1, unit: "本",
+      carbs: Math.round(totalCarbs), water: waterAmt,
+      sodium: Math.round(totalNa), k: 0, mg: Math.round(totalMg),
+    });
+    onClose();
+  }
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.93)", zIndex:300, overflowY:"auto" }}>
+      <div style={{ maxWidth:430, margin:"0 auto", padding:"20px 16px 100px", fontFamily:"'Noto Sans JP','SF Pro Display',-apple-system,sans-serif", color:"#e2e8f0" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"20px", paddingTop:"8px" }}>
+          <button onClick={onClose} style={{ background:"rgba(30,41,59,0.8)", border:"1px solid rgba(148,163,184,0.1)", color:"#94a3b8", borderRadius:"10px", padding:"8px 14px", cursor:"pointer", fontSize:"13px", fontWeight:"700" }}>← 戻る</button>
+          <div>
+            <div style={{ fontSize:"16px", fontWeight:"800", color:"#f1f5f9" }}>🧪 カスタムドリンク</div>
+            <div style={{ fontSize:"11px", color:"#64748b" }}>成分を配合してオリジナルを作る</div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:"14px" }}>
+          <div style={{ fontSize:"11px", color:"#64748b", marginBottom:"5px", fontWeight:"700" }}>ドリンク名</div>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="マイドリンク"
+            style={{ width:"100%", padding:"10px 14px", borderRadius:"10px", border:"1px solid rgba(148,163,184,0.15)", background:"rgba(15,23,42,0.8)", color:"#e2e8f0", fontSize:"14px", fontFamily:"inherit", outline:"none" }} />
+        </div>
+
+        <div style={{ marginBottom:"18px", padding:"14px", borderRadius:"12px", background:"rgba(96,165,250,0.06)", border:"1px solid rgba(96,165,250,0.15)" }}>
+          <div style={{ fontSize:"11px", color:"#60a5fa", fontWeight:"700", marginBottom:"8px" }}>💧 水の量</div>
+          <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+            <button onClick={() => setWaterAmt(w => Math.max(100, w - 100))} style={{ width:"32px", height:"32px", borderRadius:"8px", border:"none", background:"rgba(148,163,184,0.1)", color:"#94a3b8", cursor:"pointer", fontSize:"18px" }}>−</button>
+            <div style={{ flex:1, textAlign:"center", fontSize:"20px", fontWeight:"900", color:"#60a5fa" }}>{waterAmt}ml</div>
+            <button onClick={() => setWaterAmt(w => w + 100)} style={{ width:"32px", height:"32px", borderRadius:"8px", border:"none", background:"rgba(96,165,250,0.15)", color:"#60a5fa", cursor:"pointer", fontSize:"18px" }}>＋</button>
+          </div>
+        </div>
+
+        <div style={{ fontSize:"11px", color:"#64748b", fontWeight:"700", marginBottom:"8px", letterSpacing:"1px", textTransform:"uppercase" }}>成分を配合</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:"7px", marginBottom:"18px" }}>
+          {DRINK_INGREDIENTS.map(ing => {
+            const amt = amounts[ing.id] || 0;
+            const isActive = amt > 0;
+            const step = ing.unit === "mg" ? 25 : 5;
+            return (
+              <div key={ing.id} style={{ padding:"11px 13px", borderRadius:"12px", background: isActive ? ing.color + "0e" : "rgba(30,41,59,0.4)", border:`1px solid ${isActive ? ing.color + "30" : "rgba(148,163,184,0.08)"}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom: isActive ? "10px" : 0 }}>
+                  <div style={{ width:"34px", height:"34px", borderRadius:"8px", background:`${ing.color}15`, border:`1px solid ${ing.color}35`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <span style={{ fontSize:"10px", fontWeight:"900", color:ing.color }}>{ing.abbr}</span>
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:"13px", fontWeight:"700", color: isActive ? ing.color : "#94a3b8" }}>{ing.name}</div>
+                    <div style={{ fontSize:"10px", color:"#475569", marginTop:"1px" }}>{ing.note}</div>
+                  </div>
+                  <button onClick={() => setAmt(ing.id, isActive ? 0 : step)} style={{ padding:"5px 10px", borderRadius:"8px", border:"none", cursor:"pointer", background: isActive ? `${ing.color}20` : "rgba(30,41,59,0.8)", color: isActive ? ing.color : "#64748b", fontSize:"12px", fontWeight:"700" }}>
+                    {isActive ? "削除" : "+ 追加"}
+                  </button>
+                </div>
+                {isActive && (
+                  <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                    <button onClick={() => setAmt(ing.id, amt - step)} style={{ width:"30px", height:"30px", borderRadius:"8px", border:"none", background:"rgba(148,163,184,0.12)", color:"#94a3b8", cursor:"pointer", fontSize:"16px" }}>−</button>
+                    <div style={{ flex:1, textAlign:"center" }}>
+                      <span style={{ fontSize:"18px", fontWeight:"900", color:ing.color }}>{amt}</span>
+                      <span style={{ fontSize:"12px", color:"#64748b", marginLeft:"3px" }}>{ing.unit}</span>
+                    </div>
+                    <button onClick={() => setAmt(ing.id, amt + step)} style={{ width:"30px", height:"30px", borderRadius:"8px", border:"none", background:`${ing.color}18`, color:ing.color, cursor:"pointer", fontSize:"16px" }}>＋</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ padding:"14px", borderRadius:"14px", background:"rgba(15,23,42,0.8)", border:"1px solid rgba(148,163,184,0.1)", marginBottom:"18px" }}>
+          <div style={{ fontSize:"10px", color:"#64748b", fontWeight:"700", marginBottom:"10px", letterSpacing:"1px" }}>栄養サマリー (1本分)</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"6px" }}>
+            {[
+              { label:"糖質", val:Math.round(totalCarbs), unit:"g",  color:"#fbbf24" },
+              { label:"水分", val:waterAmt,               unit:"ml", color:"#60a5fa" },
+              { label:"Na",   val:Math.round(totalNa),    unit:"mg", color:"#c4b5fd" },
+              { label:"Mg",   val:Math.round(totalMg),    unit:"mg", color:"#34d399" },
+            ].map(({ label, val, unit, color }) => (
+              <div key={label} style={{ textAlign:"center" }}>
+                <div style={{ fontSize:"9px", color:"#64748b", marginBottom:"3px" }}>{label}</div>
+                <div style={{ fontSize:"16px", fontWeight:"900", color }}>{val}<span style={{ fontSize:"9px" }}>{unit}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={handleAdd} style={{ width:"100%", padding:"16px", borderRadius:"14px", border:"none", background:"linear-gradient(135deg, #6366f1, #8b5cf6)", color:"#fff", fontSize:"15px", fontWeight:"800", cursor:"pointer", boxShadow:"0 8px 24px rgba(99,102,241,0.3)" }}>
+          このドリンクを追加する →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NutritionEditModal({ activity, runType, onSave, onClose }) {
   const [nutritionItems, setNutritionItems] = useState(activity.nutritionItems || []);
   const [symptoms, setSymptoms]   = useState(activity.symptoms || []);
   const [feeling,  setFeeling]    = useState(activity.feeling  || 3);
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [showCustomDrink,   setShowCustomDrink]   = useState(false);
+
+  function addProductItem(product) {
+    setNutritionItems(prev => {
+      if (prev.find(i => i.id === product.id)) return prev;
+      return [...prev, { id: product.id, qty: product.defaultQty, name: product.name, unit: product.unit, carbs: product.carbs, sodium: product.sodium, water: product.water, k: product.k ?? 0, mg: product.mg ?? 0 }];
+    });
+  }
+  function removeProductItem(id) {
+    setNutritionItems(prev => prev.filter(i => i.id !== id));
+  }
+  function addCustomDrinkItem(item) {
+    setNutritionItems(prev => [...prev, item]);
+  }
 
   function toggleNutrition(id) {
     setNutritionItems(prev => {
@@ -1720,8 +1949,35 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
           {activity.runData.ascent > 0 && <span>↑{activity.runData.ascent}m</span>}
         </div>
 
+        {/* Modals */}
+        {showProductSearch && (
+          <ProductSearchModal
+            selectedIds={nutritionItems.map(i => i.id)}
+            onAdd={p => { addProductItem(p); }}
+            onRemove={id => removeProductItem(id)}
+            onClose={() => setShowProductSearch(false)}
+          />
+        )}
+        {showCustomDrink && (
+          <CustomDrinkModal
+            onAdd={item => addCustomDrinkItem(item)}
+            onClose={() => setShowCustomDrink(false)}
+          />
+        )}
+
         {/* Nutrition picker */}
-        <div style={{ fontSize: "13px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "12px" }}>補給したもの</div>
+        <div style={{ fontSize: "13px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "10px" }}>補給したもの</div>
+
+        {/* Action buttons */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+          <button onClick={() => setShowProductSearch(true)} style={{ flex: 1, padding: "11px 8px", borderRadius: "12px", border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)", color: "#a5b4fc", cursor: "pointer", fontSize: "12px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "5px" }}>
+            🗃️ 商品から探す
+          </button>
+          <button onClick={() => setShowCustomDrink(true)} style={{ flex: 1, padding: "11px 8px", borderRadius: "12px", border: "1px solid rgba(52,211,153,0.3)", background: "rgba(52,211,153,0.08)", color: "#34d399", cursor: "pointer", fontSize: "12px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "5px" }}>
+            🧪 カスタムドリンク
+          </button>
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
           {NUTRITION_PRESETS.map(preset => {
             const selected = nutritionItems.find(i => i.id === preset.id);
@@ -1756,6 +2012,24 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
               </div>
             );
           })}
+          {/* Product DB items added via search */}
+          {nutritionItems.filter(item => item.id.startsWith("db_") || item.id.startsWith("custom_drink_")).map(item => (
+            <div key={item.id} style={{ padding: "12px 10px", borderRadius: "14px", background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <span style={{ fontSize: "18px" }}>{item.id.startsWith("db_") ? (PRODUCT_DATABASE.find(p => p.id === item.id)?.icon || "🏷️") : "🧪"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: "#a5b4fc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
+                  <div style={{ fontSize: "10px", color: "#64748b" }}>{item.carbs > 0 ? `糖${item.carbs}g ` : ""}{item.sodium > 0 ? `Na${item.sodium}mg` : ""}</div>
+                </div>
+                <button onClick={() => removeProductItem(item.id)} style={{ width: "20px", height: "20px", borderRadius: "5px", border: "none", background: "rgba(239,68,68,0.15)", color: "#ef4444", cursor: "pointer", fontSize: "12px", flexShrink: 0 }}>×</button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                <button onClick={() => updateQty(item.id, Math.max(1, item.qty - 1))} style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(148,163,184,0.15)", color: "#94a3b8", cursor: "pointer", fontSize: "14px" }}>−</button>
+                <span style={{ fontSize: "13px", fontWeight: "700", color: "#f1f5f9", flex: 1, textAlign: "center" }}>{item.qty}{item.unit}</span>
+                <button onClick={() => updateQty(item.id, item.qty + 1)} style={{ width: "22px", height: "22px", borderRadius: "6px", border: "none", background: "rgba(99,102,241,0.15)", color: "#818cf8", cursor: "pointer", fontSize: "14px" }}>＋</button>
+              </div>
+            </div>
+          ))}
         </div>
         {nutritionItems.length > 0 && <NutritionTotals items={nutritionItems} />}
 
@@ -1873,7 +2147,7 @@ function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivi
   const cutoff = period === "weekly"
     ? new Date(now - 7  * 24 * 60 * 60 * 1000)
     : new Date(now - 30 * 24 * 60 * 60 * 1000);
-  const periodActivities = activities.filter(a => a.addedAt >= cutoff);
+  const periodActivities = activities.filter(a => new Date(a.addedAt) >= cutoff);
 
   const bg   = "linear-gradient(165deg, #0a0e17 0%, #111827 40%, #1a1a2e 100%)";
   const font = "'Noto Sans JP', 'SF Pro Display', -apple-system, sans-serif";
