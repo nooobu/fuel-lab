@@ -1437,6 +1437,25 @@ function AnalysisStep({ analysis, profile, runType, runData, symptoms, feeling, 
 
 // ─── Plan Screen helper ─────────────────────────────────────────────────────
 function StepperInput({ label, unit, value, min, max, step = 1, onChange }) {
+  const [editing, setEditing] = React.useState(false);
+  const [raw, setRaw] = React.useState("");
+  const inputRef = React.useRef(null);
+
+  function startEdit() {
+    setRaw(String(value));
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  }
+  function commitEdit() {
+    const n = parseInt(raw, 10);
+    if (!isNaN(n)) onChange(Math.min(max, Math.max(min, n)));
+    setEditing(false);
+  }
+  function handleKey(e) {
+    if (e.key === "Enter") commitEdit();
+    if (e.key === "Escape") setEditing(false);
+  }
+
   const btn = {
     width: "30px", height: "30px", borderRadius: "8px",
     border: "1px solid rgba(148,163,184,0.15)",
@@ -1448,7 +1467,27 @@ function StepperInput({ label, unit, value, min, max, step = 1, onChange }) {
       <div style={{ flex: 1, fontSize: "13px", color: "#94a3b8" }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
         <button style={btn} onClick={() => onChange(Math.max(min, value - step))}>−</button>
-        <div style={{ width: "52px", textAlign: "center", fontSize: "17px", fontWeight: "800", color: "#f1f5f9" }}>{value}</div>
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="number"
+            value={raw}
+            onChange={e => setRaw(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={handleKey}
+            style={{
+              width: "52px", textAlign: "center", fontSize: "17px", fontWeight: "800",
+              color: "#f1f5f9", background: "rgba(99,102,241,0.15)",
+              border: "1px solid rgba(99,102,241,0.5)", borderRadius: "6px",
+              outline: "none", padding: "2px 0",
+            }}
+          />
+        ) : (
+          <div
+            onClick={startEdit}
+            style={{ width: "52px", textAlign: "center", fontSize: "17px", fontWeight: "800", color: "#f1f5f9", cursor: "text" }}
+          >{value}</div>
+        )}
         <button style={btn} onClick={() => onChange(Math.min(max, value + step))}>+</button>
         <div style={{ fontSize: "11px", color: "#475569", width: "34px" }}>{unit}</div>
       </div>
