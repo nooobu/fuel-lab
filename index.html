@@ -1495,6 +1495,39 @@ function StepperInput({ label, unit, value, min, max, step = 1, onChange }) {
   );
 }
 
+// ─── GPX Parser ──────────────────────────────────────────────────────────────
+function parseGPX(text) {
+  try {
+    const dom = new DOMParser().parseFromString(text, "application/xml");
+    if (dom.querySelector("parsererror")) return null;
+    const trkpts = [...dom.querySelectorAll("trkpt")];
+    if (trkpts.length < 2) return null;
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371, r = Math.PI / 180;
+      const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    let dist = 0, ascent = 0;
+    for (let i = 1; i < trkpts.length; i++) {
+      const prev = trkpts[i - 1], cur = trkpts[i];
+      dist += haversine(
+        +prev.getAttribute("lat"), +prev.getAttribute("lon"),
+        +cur.getAttribute("lat"),  +cur.getAttribute("lon")
+      );
+      const eleP = parseFloat(prev.querySelector("ele")?.textContent ?? "0");
+      const eleC = parseFloat(cur.querySelector("ele")?.textContent ?? "0");
+      if (eleC > eleP) ascent += eleC - eleP;
+    }
+    const nameEl = dom.querySelector("metadata > name") || dom.querySelector("trk > name");
+    return {
+      dist: Math.round(dist * 10) / 10,
+      ascent: Math.round(ascent / 10) * 10,
+      name: nameEl?.textContent?.trim() || null,
+    };
+  } catch { return null; }
+}
+
 // ─── Plan Screen ────────────────────────────────────────────────────────────
 function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan }) {
   const [tab, setTab] = useState("setup");
@@ -1502,6 +1535,10 @@ function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan })
   const [planName, setPlanName] = useState("マイプラン");
   const [aidStations, setAidStations] = useState([]);
   const [aidFoodInput, setAidFoodInput] = useState({});
+  const [dropBagInput, setDropBagInput] = useState({});
+  const [dropBagOpen, setDropBagOpen] = useState({});
+  const [gpxError, setGpxError] = useState(null);
+  const gpxRef = React.useRef(null);
   const [dist, setDist] = useState(Math.round(runData?.dist ?? 15));
   const [pace, setPace] = useState(() => {
     if (runData?.durationMins && runData?.dist > 0) {
@@ -1520,7 +1557,33 @@ function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan })
     return Math.round(km * pace + (km / Math.max(dist, 1)) * (ascent / 100) * 4);
   }
   function addAid() {
-    setAidStations(prev => [...prev, { id: Date.now(), km: Math.round(dist / 2), foods: [] }]);
+    setAidStations(prev => [...prev, { id: Date.now(), km: Math.round(dist / 2), foods: [], dropBag: [] }]);
+  }
+  function addDropBagItem(id) {
+    const item = (dropBagInput[id] || "").trim();
+    if (!item) return;
+    setAidStations(prev => prev.map(a => a.id === id ? { ...a, dropBag: [...(a.dropBag||[]), item] } : a));
+    setDropBagInput(prev => ({ ...prev, [id]: "" }));
+  }
+  function removeDropBagItem(aidId, idx) {
+    setAidStations(prev => prev.map(a => a.id === aidId ? { ...a, dropBag: (a.dropBag||[]).filter((_, i) => i !== idx) } : a));
+  }
+  function handleGPX(file) {
+    if (!file) return;
+    setGpxError(null);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const result = parseGPX(e.target.result);
+      if (result) {
+        setDist(result.dist);
+        setAscent(result.ascent);
+        if (result.name) setPlanName(result.name);
+        setPlanSaved(false);
+      } else {
+        setGpxError("GPXを読み取れませんでした。");
+      }
+    };
+    reader.readAsText(file, "UTF-8");
   }
   function removeAid(id) {
     setAidStations(prev => prev.filter(a => a.id !== id));
@@ -1651,6 +1714,16 @@ function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan })
               <StepperInput label="獲得標高" unit="m" value={ascent} min={0} max={5000} step={50} onChange={setAscent} />
             </div>
 
+            {/* GPX読み込み */}
+            <input ref={gpxRef} type="file" accept=".gpx" style={{ display:"none" }}
+              onChange={e => { if (e.target.files[0]) { handleGPX(e.target.files[0]); e.target.value=""; } }} />
+            <button onClick={() => gpxRef.current.click()} style={{
+              width: "100%", padding: "11px", borderRadius: "12px", marginBottom: "12px",
+              border: "1px dashed rgba(99,102,241,0.35)", background: "rgba(99,102,241,0.06)",
+              color: "#818cf8", fontSize: "12px", fontWeight: "700", cursor: "pointer",
+            }}>📍 GPXファイルを読み込む</button>
+            {gpxError && <div style={{ fontSize: "11px", color: "#f87171", marginBottom: "10px", textAlign: "center" }}>{gpxError}</div>}
+
             <div style={{ ...card, textAlign: "center", padding: "24px 16px" }}>
               <div style={{ fontSize: "10px", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "8px" }}>推定タイム</div>
               <div style={{ fontSize: "42px", fontWeight: "900", letterSpacing: "-2px", color: "#f8fafc" }}>{fmt(estimatedMins)}</div>
@@ -1765,7 +1838,7 @@ function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan })
                         value={aidFoodInput[aid.id] || ""}
                         onChange={e => setAidFoodInput(prev => ({ ...prev, [aid.id]: e.target.value }))}
                         onKeyDown={e => e.key === "Enter" && addAidFood(aid.id)}
-                        placeholder="フード名を入力..."
+                        placeholder="AIDフード名を入力..."
                         style={{
                           flex: 1, background: "rgba(15,23,42,0.6)", border: "1px solid rgba(148,163,184,0.1)",
                           borderRadius: "8px", color: "#e2e8f0", fontSize: "12px", padding: "6px 10px",
@@ -1776,6 +1849,50 @@ function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan })
                         background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
                         color: "#a5b4fc", borderRadius: "8px", padding: "6px 12px", fontSize: "12px", fontWeight: "700", cursor: "pointer",
                       }}>追加</button>
+                    </div>
+
+                    {/* ドロップバッグ */}
+                    <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid rgba(148,163,184,0.08)" }}>
+                      <button onClick={() => setDropBagOpen(prev => ({ ...prev, [aid.id]: !prev[aid.id] }))} style={{
+                        background: "none", border: "none", color: "#94a3b8", fontSize: "11px", fontWeight: "700",
+                        cursor: "pointer", padding: "0", display: "flex", alignItems: "center", gap: "5px",
+                      }}>
+                        🎒 ドロップバッグ {dropBagOpen[aid.id] ? "▲" : "▼"}
+                        {(aid.dropBag||[]).length > 0 && <span style={{ color: "#fbbf24", marginLeft: "4px" }}>{(aid.dropBag||[]).length}点</span>}
+                      </button>
+                      {dropBagOpen[aid.id] && (
+                        <div style={{ marginTop: "8px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: (aid.dropBag||[]).length > 0 ? "8px" : "0" }}>
+                            {(aid.dropBag||[]).map((item, di) => (
+                              <div key={di} style={{
+                                display: "flex", alignItems: "center", gap: "4px",
+                                padding: "3px 8px", borderRadius: "20px", fontSize: "11px", fontWeight: "600",
+                                background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)", color: "#fbbf24",
+                              }}>
+                                {item}
+                                <span onClick={() => removeDropBagItem(aid.id, di)} style={{ cursor: "pointer", color: "#64748b", fontWeight: "900", marginLeft: "2px" }}>×</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <input
+                              value={dropBagInput[aid.id] || ""}
+                              onChange={e => setDropBagInput(prev => ({ ...prev, [aid.id]: e.target.value }))}
+                              onKeyDown={e => e.key === "Enter" && addDropBagItem(aid.id)}
+                              placeholder="バッグの中身を入力..."
+                              style={{
+                                flex: 1, background: "rgba(15,23,42,0.6)", border: "1px solid rgba(148,163,184,0.1)",
+                                borderRadius: "8px", color: "#e2e8f0", fontSize: "12px", padding: "6px 10px",
+                                outline: "none", fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif",
+                              }}
+                            />
+                            <button onClick={() => addDropBagItem(aid.id)} style={{
+                              background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)",
+                              color: "#fbbf24", borderRadius: "8px", padding: "6px 12px", fontSize: "12px", fontWeight: "700", cursor: "pointer",
+                            }}>追加</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1828,6 +1945,19 @@ function PlanScreen({ profile, runType, analysis, runData, onBack, onSavePlan })
                                 ))
                             }
                           </div>
+                          {(aid.dropBag||[]).length > 0 && (
+                            <div style={{ marginTop: "6px", paddingTop: "6px", borderTop: "1px solid rgba(251,191,36,0.15)" }}>
+                              <div style={{ fontSize: "9px", color: "#92400e", fontWeight: "700", marginBottom: "4px" }}>🎒 ドロップバッグ</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                                {(aid.dropBag||[]).map((item, di) => (
+                                  <div key={di} style={{
+                                    padding: "3px 9px", borderRadius: "20px", fontSize: "11px", fontWeight: "600",
+                                    background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)", color: "#fbbf24",
+                                  }}>{item}</div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
