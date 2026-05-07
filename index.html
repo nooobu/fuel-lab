@@ -2097,7 +2097,7 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
     tx(pName, W - PAD, cy - 8, { sz: 36, w: '800', col: '#e2e8f0', align: 'right' });
     tx(new Date().toLocaleDateString('ja-JP'), W - PAD, cy + 30, { sz: 24, col: '#475569', align: 'right' });
     cy += 80;
-    hr(cy, 'rgba(99,102,241,0.4)'); cy += 60;
+    hr(cy, 'rgba(99,102,241,0.4)'); cy += 92;
 
     // ── Race stats ──
     tx(`${dist} km`, PAD, cy, { sz: 76, w: '900', col: '#f8fafc' });
@@ -2110,12 +2110,12 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
     tx(`⚡ ${targetCarbsHr}g/hr`, PAD, cy, { sz: 34, col: '#fbbf24' });
     tx(`💧 ${targetWaterHr}ml/hr`, PAD + 280, cy, { sz: 34, col: '#60a5fa' });
     tx(`Na ${targetSodiumHr}mg/hr`, PAD + 580, cy, { sz: 34, col: '#c4b5fd' });
-    cy += 72;
-    hr(cy); cy += 52;
+    cy += 80;
+    hr(cy); cy += 60;
 
     // ── Timeline ──
     tx('TIMELINE', PAD, cy, { sz: 26, w: '700', col: '#64748b' });
-    cy += 54;
+    cy += 58;
 
     timeline.forEach((step, i) => {
       const stepKm = estimatedMins > 0 ? Math.round(step.mins / estimatedMins * dist * 10) / 10 : 0;
@@ -2140,8 +2140,8 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
 
     // ── AID Stations ──
     if (sortedAids.length > 0) {
-      cy += 16; hr(cy); cy += 52;
-      tx('AIDポイント', PAD, cy, { sz: 26, w: '700', col: '#64748b' }); cy += 54;
+      cy += 20; hr(cy); cy += 60;
+      tx('AIDポイント', PAD, cy, { sz: 26, w: '700', col: '#64748b' }); cy += 58;
       sortedAids.forEach(aid => {
         ctx.fillStyle = 'rgba(34,197,94,0.1)';
         ctx.beginPath(); ctx.roundRect(PAD, cy - 40, W - PAD * 2, 52, 12); ctx.fill();
