@@ -1943,7 +1943,7 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
   const targetSodiumHr = (profile?.weight ?? 65) >= 70 ? 500 : 400;
 
   function generateTimeline(totalMins, rt) {
-    const interval = totalMins <= 120 ? 20 : 30;
+    const interval = 60;
     const steps = [];
     // Helper: build an item with all nutrient fields from preset
     const ni = (id, qty) => {
