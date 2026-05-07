@@ -2137,51 +2137,6 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
               </div>
             )}
 
-            <button onClick={() => setTab("timeline")} style={{
-              width: "100%", padding: "16px", borderRadius: "14px", border: "none",
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
-              boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
-            }}>タイムラインを確認する →</button>
-          </>
-        )}
-
-        {/* ── タイムラインタブ ── */}
-        {tab === "timeline" && (
-          <>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-              <div style={{ fontSize: "14px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase" }}>補給タイムライン</div>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button onClick={() => setDistView(v => !v)} style={{
-                  background: "rgba(30,41,59,0.6)", border: "1px solid rgba(148,163,184,0.1)",
-                  color: "#94a3b8", borderRadius: "8px", padding: "4px 10px", fontSize: "14px", fontWeight: "700", cursor: "pointer",
-                }}>{distView ? "⏱ タイム" : "📍 距離"}</button>
-                <button onClick={() => setTimeline(generateTimeline(estimatedMins, runType))} style={{
-                  background: "rgba(30,41,59,0.6)", border: "1px solid rgba(148,163,184,0.1)",
-                  color: "#64748b", borderRadius: "8px", padding: "4px 10px", fontSize: "14px", fontWeight: "700", cursor: "pointer",
-                }}>↺ リセット</button>
-              </div>
-            </div>
-
-            {/* 合計値 */}
-            <div style={{ ...card, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", textAlign: "center", marginBottom: "16px" }}>
-              {[
-                { label: "糖質/h", value: totals.carbsHr, target: targetCarbsHr, unit: "g", color: "#fbbf24" },
-                { label: "水分/h", value: totals.waterHr, target: targetWaterHr, unit: "ml", color: "#60a5fa" },
-                { label: "Na/h", value: totals.sodiumHr, target: targetSodiumHr, unit: "mg", color: "#c4b5fd" },
-              ].map(({ label, value, target, unit }) => {
-                const ok = value >= target * 0.85 && value <= target * 1.2;
-                const low = value < target * 0.85;
-                return (
-                  <div key={label}>
-                    <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "2px" }}>{label}</div>
-                    <div style={{ fontSize: "20px", fontWeight: "900", color: ok ? "#4ade80" : low ? "#fbbf24" : "#f87171" }}>{value}</div>
-                    <div style={{ fontSize: "14px", color: "#475569" }}>目標 {target}{unit}</div>
-                  </div>
-                );
-              })}
-            </div>
-
             {/* AIDポイント */}
             {runType === "trail" && (
               <div style={{ marginBottom: "20px" }}>
@@ -2296,6 +2251,51 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
                 ))}
               </div>
             )}
+
+            <button onClick={() => setTab("timeline")} style={{
+              width: "100%", padding: "16px", borderRadius: "14px", border: "none",
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+              boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
+            }}>タイムラインを確認する →</button>
+          </>
+        )}
+
+        {/* ── タイムラインタブ ── */}
+        {tab === "timeline" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+              <div style={{ fontSize: "14px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase" }}>補給タイムライン</div>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button onClick={() => setDistView(v => !v)} style={{
+                  background: "rgba(30,41,59,0.6)", border: "1px solid rgba(148,163,184,0.1)",
+                  color: "#94a3b8", borderRadius: "8px", padding: "4px 10px", fontSize: "14px", fontWeight: "700", cursor: "pointer",
+                }}>{distView ? "⏱ タイム" : "📍 距離"}</button>
+                <button onClick={() => setTimeline(generateTimeline(estimatedMins, runType))} style={{
+                  background: "rgba(30,41,59,0.6)", border: "1px solid rgba(148,163,184,0.1)",
+                  color: "#64748b", borderRadius: "8px", padding: "4px 10px", fontSize: "14px", fontWeight: "700", cursor: "pointer",
+                }}>↺ リセット</button>
+              </div>
+            </div>
+
+            {/* 合計値 */}
+            <div style={{ ...card, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", textAlign: "center", marginBottom: "16px" }}>
+              {[
+                { label: "糖質/h", value: totals.carbsHr, target: targetCarbsHr, unit: "g", color: "#fbbf24" },
+                { label: "水分/h", value: totals.waterHr, target: targetWaterHr, unit: "ml", color: "#60a5fa" },
+                { label: "Na/h", value: totals.sodiumHr, target: targetSodiumHr, unit: "mg", color: "#c4b5fd" },
+              ].map(({ label, value, target, unit }) => {
+                const ok = value >= target * 0.85 && value <= target * 1.2;
+                const low = value < target * 0.85;
+                return (
+                  <div key={label}>
+                    <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "2px" }}>{label}</div>
+                    <div style={{ fontSize: "20px", fontWeight: "900", color: ok ? "#4ade80" : low ? "#fbbf24" : "#f87171" }}>{value}</div>
+                    <div style={{ fontSize: "14px", color: "#475569" }}>目標 {target}{unit}</div>
+                  </div>
+                );
+              })}
+            </div>
 
             {/* タイムライン */}
             <div style={{ position: "relative" }}>
