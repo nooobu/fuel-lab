@@ -2091,13 +2091,13 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
     let cy = PAD + 50;
 
     // ── Header ──
-    tx('⚡ FUEL LAB', PAD, cy, { sz: 54, w: '900', col: '#6366f1' });
+    // FUEL LAB left, plan name right (vertically centered together)
     const pName = planName || 'レースプラン';
-    tx(pName, W - PAD, cy, { sz: 40, w: '800', col: '#e2e8f0', align: 'right' });
-    cy += 24;
-    tx(new Date().toLocaleDateString('ja-JP'), W - PAD, cy, { sz: 28, col: '#475569', align: 'right' });
-    cy += 60;
-    hr(cy, 'rgba(99,102,241,0.4)'); cy += 52;
+    tx('⚡ FUEL LAB', PAD, cy, { sz: 54, w: '900', col: '#6366f1' });
+    tx(pName, W - PAD, cy - 8, { sz: 36, w: '800', col: '#e2e8f0', align: 'right' });
+    tx(new Date().toLocaleDateString('ja-JP'), W - PAD, cy + 30, { sz: 24, col: '#475569', align: 'right' });
+    cy += 80;
+    hr(cy, 'rgba(99,102,241,0.4)'); cy += 60;
 
     // ── Race stats ──
     tx(`${dist} km`, PAD, cy, { sz: 76, w: '900', col: '#f8fafc' });
@@ -2118,13 +2118,16 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
     cy += 54;
 
     timeline.forEach((step, i) => {
-      const tlbl = distView ? `${step.km}km` : fmt(step.time);
-      const isStart = i === 0;
+      const stepKm = estimatedMins > 0 ? Math.round(step.mins / estimatedMins * dist * 10) / 10 : 0;
+      const tlbl = distView ? `${stepKm}km` : fmt(step.mins);
+      const isStart = step.isStart;
+      const isFinish = step.isFinish;
+      const stepLbl = isStart ? 'スタート' : isFinish ? 'フィニッシュ' : '';
       // Time badge
-      ctx.fillStyle = isStart ? 'rgba(34,197,94,0.15)' : 'rgba(99,102,241,0.12)';
+      ctx.fillStyle = isStart ? 'rgba(34,197,94,0.15)' : isFinish ? 'rgba(251,191,36,0.12)' : 'rgba(99,102,241,0.12)';
       ctx.beginPath(); ctx.roundRect(PAD, cy - 38, 160, 48, 10); ctx.fill();
-      tx(tlbl, PAD + 80, cy, { sz: 34, w: '900', col: isStart ? '#4ade80' : '#818cf8', align: 'center' });
-      tx(step.label || '', PAD + 180, cy, { sz: 34, w: '700', col: '#f1f5f9' });
+      tx(tlbl, PAD + 80, cy, { sz: 34, w: '900', col: isStart ? '#4ade80' : isFinish ? '#fbbf24' : '#818cf8', align: 'center' });
+      tx(stepLbl, PAD + 180, cy, { sz: 34, w: '700', col: isStart || isFinish ? '#818cf8' : '#64748b' });
       cy += ROW;
       step.items.forEach(item => {
         const food = allFoodItems.find(f => f.id === item.id);
