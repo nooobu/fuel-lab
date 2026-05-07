@@ -2036,6 +2036,142 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
   const font = "'Noto Sans JP', 'SF Pro Display', -apple-system, sans-serif";
   const card = { ...cardBase, marginBottom: "12px" };
 
+  // ─── レースカードPNG書き出し ────────────────────────────────────────────
+  function exportRaceCard() {
+    const W = 1080;
+    const PAD = 64;
+    const ROW = 58;
+    const sortedAids = [...aidStations].sort((a, b) => a.km - b.km);
+
+    // Canvas height estimation
+    let estH = 320 + 180 + 120; // header + stats + section labels
+    timeline.forEach(s => { estH += ROW + s.items.length * (ROW - 14); });
+    if (sortedAids.length > 0) {
+      estH += 120;
+      sortedAids.forEach(a => { estH += ROW + ((a.foods||[]).length > 0 ? ROW - 14 : 0) + ((a.dropBag||[]).length > 0 ? ROW - 14 : 0); });
+    }
+    estH = Math.max(1920, estH + 200);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = estH;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    const grd = ctx.createLinearGradient(0, 0, 0, estH);
+    grd.addColorStop(0, '#0a0e17'); grd.addColorStop(0.5, '#111827'); grd.addColorStop(1, '#0a0e17');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, W, estH);
+
+    // Subtle grid lines
+    ctx.strokeStyle = 'rgba(99,102,241,0.04)'; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 80) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, estH); ctx.stroke(); }
+
+    const SYS_FONT = `-apple-system, "Helvetica Neue", Arial, sans-serif`;
+    function tx(str, x, y, { sz = 32, w = '400', col = '#f8fafc', align = 'left', maxW } = {}) {
+      ctx.font = `${w} ${sz}px ${SYS_FONT}`;
+      ctx.fillStyle = col; ctx.textAlign = align;
+      if (maxW) {
+        while (ctx.measureText(str).width > maxW && str.length > 2) str = str.slice(0, -1);
+        if (!str.endsWith('…')) str += str.length < (typeof arguments[0] === 'string' ? arguments[0].length : 0) ? '…' : '';
+      }
+      ctx.fillText(str, x, y);
+    }
+    function hr(y, col = 'rgba(148,163,184,0.12)') {
+      ctx.strokeStyle = col; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
+    }
+    function pill(label, x, y, col = '#6366f1') {
+      ctx.font = `700 26px ${SYS_FONT}`;
+      const mw = ctx.measureText(label).width + 24;
+      ctx.fillStyle = col + '22';
+      ctx.beginPath(); ctx.roundRect(x, y - 26, mw, 36, 8); ctx.fill();
+      ctx.strokeStyle = col + '55'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.fillText(label, x + 12, y);
+    }
+
+    let cy = PAD + 50;
+
+    // ── Header ──
+    tx('⚡ FUEL LAB', PAD, cy, { sz: 54, w: '900', col: '#6366f1' });
+    const pName = planName || 'レースプラン';
+    tx(pName, W - PAD, cy, { sz: 40, w: '800', col: '#e2e8f0', align: 'right' });
+    cy += 24;
+    tx(new Date().toLocaleDateString('ja-JP'), W - PAD, cy, { sz: 28, col: '#475569', align: 'right' });
+    cy += 60;
+    hr(cy, 'rgba(99,102,241,0.4)'); cy += 52;
+
+    // ── Race stats ──
+    tx(`${dist} km`, PAD, cy, { sz: 76, w: '900', col: '#f8fafc' });
+    tx(fmt(estimatedMins), PAD + 280, cy, { sz: 76, w: '900', col: '#a5b4fc' });
+    const pm = Math.floor(derivedPace), ps = String(Math.round((derivedPace - pm) * 60)).padStart(2, '0');
+    tx(`${pm}:${ps}/km`, W - PAD, cy, { sz: 36, w: '700', col: '#475569', align: 'right' });
+    cy += 96;
+
+    // Target nutrition
+    tx(`⚡ ${targetCarbsHr}g/hr`, PAD, cy, { sz: 34, col: '#fbbf24' });
+    tx(`💧 ${targetWaterHr}ml/hr`, PAD + 280, cy, { sz: 34, col: '#60a5fa' });
+    tx(`Na ${targetSodiumHr}mg/hr`, PAD + 580, cy, { sz: 34, col: '#c4b5fd' });
+    cy += 72;
+    hr(cy); cy += 52;
+
+    // ── Timeline ──
+    tx('TIMELINE', PAD, cy, { sz: 26, w: '700', col: '#64748b' });
+    cy += 54;
+
+    timeline.forEach((step, i) => {
+      const tlbl = distView ? `${step.km}km` : fmt(step.time);
+      const isStart = i === 0;
+      // Time badge
+      ctx.fillStyle = isStart ? 'rgba(34,197,94,0.15)' : 'rgba(99,102,241,0.12)';
+      ctx.beginPath(); ctx.roundRect(PAD, cy - 38, 160, 48, 10); ctx.fill();
+      tx(tlbl, PAD + 80, cy, { sz: 34, w: '900', col: isStart ? '#4ade80' : '#818cf8', align: 'center' });
+      tx(step.label || '', PAD + 180, cy, { sz: 34, w: '700', col: '#f1f5f9' });
+      cy += ROW;
+      step.items.forEach(item => {
+        const food = allFoodItems.find(f => f.id === item.id);
+        if (!food) return;
+        const foodStr = `  ${food.icon || ''}${food.name}  x${item.qty}`;
+        tx(foodStr, PAD + 185, cy, { sz: 28, col: '#94a3b8' });
+        cy += ROW - 14;
+      });
+    });
+
+    // ── AID Stations ──
+    if (sortedAids.length > 0) {
+      cy += 16; hr(cy); cy += 52;
+      tx('AIDポイント', PAD, cy, { sz: 26, w: '700', col: '#64748b' }); cy += 54;
+      sortedAids.forEach(aid => {
+        ctx.fillStyle = 'rgba(34,197,94,0.1)';
+        ctx.beginPath(); ctx.roundRect(PAD, cy - 40, W - PAD * 2, 52, 12); ctx.fill();
+        tx(`🏁`, PAD + 16, cy, { sz: 34 });
+        tx(`${aid.km} km`, PAD + 70, cy, { sz: 38, w: '900', col: '#4ade80' });
+        tx(`(${fmt(kmToMins(aid.km))})`, PAD + 220, cy, { sz: 34, col: '#94a3b8' });
+        cy += ROW;
+        if ((aid.foods||[]).length > 0) {
+          tx(`  ${(aid.foods||[]).join(' / ')}`, PAD + 16, cy, { sz: 28, col: '#86efac' }); cy += ROW - 14;
+        }
+        if ((aid.dropBag||[]).length > 0) {
+          tx(`  🎒 ${(aid.dropBag||[]).join(' / ')}`, PAD + 16, cy, { sz: 28, col: '#fbbf24' }); cy += ROW - 14;
+        }
+      });
+    }
+
+    // ── Footer ──
+    cy += 40; hr(cy, 'rgba(99,102,241,0.2)'); cy += 48;
+    tx('nooobu.github.io/fuel-lab', W / 2, cy, { sz: 24, col: '#334155', align: 'center' });
+
+    // Crop to actual content, then download
+    const finalH = Math.min(estH, cy + 60);
+    const out = document.createElement('canvas');
+    out.width = W; out.height = finalH;
+    out.getContext('2d').drawImage(canvas, 0, 0);
+    out.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url;
+      a.download = `${(planName || 'race-plan').replace(/\s/g, '_')}.png`;
+      a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }, 'image/png');
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: bg, color: "#e2e8f0", fontFamily: font, maxWidth: "430px", margin: "0 auto" }}>
       <div style={{ position: "fixed", top: "-20%", right: "-10%", width: "50vw", height: "50vw", background: "radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)", pointerEvents: "none" }} />
@@ -2275,6 +2411,10 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
                   background: "rgba(30,41,59,0.6)", border: "1px solid rgba(148,163,184,0.1)",
                   color: "#64748b", borderRadius: "8px", padding: "4px 10px", fontSize: "14px", fontWeight: "700", cursor: "pointer",
                 }}>↺ リセット</button>
+                <button onClick={exportRaceCard} style={{
+                  background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
+                  color: "#a5b4fc", borderRadius: "8px", padding: "4px 10px", fontSize: "14px", fontWeight: "700", cursor: "pointer",
+                }} title="レースカードをPNG画像で保存">📸</button>
               </div>
             </div>
 
