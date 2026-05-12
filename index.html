@@ -76,7 +76,7 @@ const FOOD_ITEMS = [
   { id:"fi_manju",  icon:"🍡", name:"まんじゅう",         unit:"個", defaultQty:1, carbs:35, water:0,   sodium:50,  k:30,  mg:5  },
   { id:"fi_anpan",  icon:"🍞", name:"あんぱん",           unit:"個", defaultQty:1, carbs:45, water:0,   sodium:200, k:90,  mg:15 },
   { id:"fi_chips",  icon:"🥔", name:"ポテトチップス 30g", unit:"袋", defaultQty:1, carbs:15, water:0,   sodium:150, k:80,  mg:10 },
-  { id:"fi_salt",   icon:"🧂", name:"塩タブ 3粒",        unit:"回", defaultQty:1, carbs:0,  water:0,   sodium:200, k:40,  mg:10 },
+  { id:"fi_salt",   icon:"🧂", name:"塩タブ",             unit:"粒", defaultQty:3, carbs:0,  water:0,   sodium:67,  k:13,  mg:3  },
   { id:"fi_oshiruko",icon:"🍵",name:"おしるこ",           unit:"個", defaultQty:1, carbs:36, water:100, sodium:80,  k:100, mg:10 },
   // ジェル・ドリンク（PRODUCT_DATABASEから主要品をミラー）
   ...PRODUCT_DATABASE.map(p => ({ ...p, defaultQty: 1 })),
@@ -330,13 +330,21 @@ function computeAnalysis(runData, nutritionItems, symptoms, runType) {
   });
 
   if (has("acid")) insights.push({
-    type: "warn", icon: "🔥", title: "胃酸・しゃっくりの原因を分析",
+    type: "warn", icon: "🔥", title: "胃酸・しゃっくり — 根本原因の特定",
     detail: [
-      "後半の長時間運動で胃の蠕動が低下すると胃酸が逆流しやすくなります。",
-      hours >= 8 ? `${Math.round(hours)}時間超のレースでは特に${Math.round(hours * 0.65)}〜${Math.round(hours * 0.75)}時間付近から胃腸が限界を迎えることが多いです。` : "",
-      "レモン・シトラス系フレーバーの補給食に含まれるクエン酸が胃を刺激し悪化させることがあります。",
-    ].filter(Boolean).join(" "),
-    fix: "①後半はニュートラルフレーバー（ノンフレーバー）に切り替える ②エイドで固形食（おにぎり・バナナ）を必ず胃に入れて緩衝材にする ③電解質タブレットで塩分を小刻みに補給してデキストリンの浸透圧負荷を下げる ④しゃっくりが出たら少量の冷水を一気飲みして胃を落ち着かせる",
+      hours >= 8
+        ? `${Math.round(hours)}時間超の運動では胃の蠕動運動が著しく低下し、胃酸が逆流しやすくなります。`
+        : "長時間の運動で胃の蠕動運動が低下し、胃酸が逆流しやすくなります。",
+      "最大の引き金は「エイドステーションで固形物を食べなかったこと」。固形食がないと胃酸を中和・吸収するバッファーがなくなります。",
+      "レモン・シトラス系フレーバーに含まれるクエン酸は弱った胃に直撃し、症状を悪化させます。",
+      "水の飲みすぎも注意：過剰な水は胃酸を薄めず逆に胃内圧を高め、逆流を促進することがあります。",
+    ].join(" "),
+    fix: [
+      "【最優先】60km以降の全エイドで固形食（おにぎり・バナナ・じゃがいも）を最低1口必ず食べる。固形物が胃酸の蓋になる。",
+      "【フレーバー】後半はノンフレーバーまたは梅・塩系に固定。レモン・オレンジ系は40km以降禁止にプランニング。",
+      "【水の飲み方】後半は「ちびちび飲み続ける」より「一定量を飲んで間隔を空ける」方が胃に優しい。",
+      "【応急処置】しゃっくりが出たら冷水を一気飲み→息を10秒止める。これで約7割は止まります。",
+    ].join(" "),
   });
 
   const allGood = carbScore >= 80 && waterScore >= 80 && sodiumScore >= 80 && kScore >= 80 && mgScore >= 80;
