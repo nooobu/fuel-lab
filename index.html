@@ -98,14 +98,15 @@ const DRINK_INGREDIENTS = [
 ];
 
 const SYMPTOM_OPTIONS = [
-  { id: "none",      icon: "😊", label: "問題なし",         cause: ""                            },
-  { id: "headache",  icon: "🤕", label: "頭痛",             cause: "脱水・Na不足"                 },
-  { id: "cramp",     icon: "⚡", label: "筋肉の攣り",       cause: "電解質不足（Na/K/Mg）"        },
-  { id: "gi",        icon: "😟", label: "胃の不快感",       cause: "ジェルの糖質濃度が高い"       },
-  { id: "bonk",      icon: "😵", label: "エネルギー切れ",   cause: "糖質不足"                     },
-  { id: "nausea",    icon: "🤢", label: "吐き気",           cause: "補給タイミング・水分過多"     },
-  { id: "dizziness", icon: "😵‍💫", label: "めまい",           cause: "重度の脱水またはNa不足"       },
-  { id: "fatigue",   icon: "😫", label: "想定以上の疲労",   cause: "糖質不足＋脱水の複合"         },
+  { id: "none",      icon: "😊", label: "問題なし",           cause: ""                                  },
+  { id: "headache",  icon: "🤕", label: "頭痛",               cause: "脱水・Na不足"                       },
+  { id: "cramp",     icon: "⚡", label: "筋肉の攣り",         cause: "電解質不足（Na/K/Mg）"              },
+  { id: "gi",        icon: "😟", label: "胃の不快感",         cause: "ジェルの糖質濃度が高い"             },
+  { id: "acid",      icon: "🔥", label: "胃酸・しゃっくり",   cause: "胃酸の逆流・疲労後期の胃オーバーロード" },
+  { id: "bonk",      icon: "😵", label: "エネルギー切れ",     cause: "糖質不足"                           },
+  { id: "nausea",    icon: "🤢", label: "吐き気",             cause: "補給タイミング・水分過多"           },
+  { id: "dizziness", icon: "😵‍💫", label: "めまい",             cause: "重度の脱水またはNa不足"             },
+  { id: "fatigue",   icon: "😫", label: "想定以上の疲労",     cause: "糖質不足＋脱水の複合"               },
 ];
 
 // ─── CSV parser (Garmin / Strava — summary row OR multi-lap rows) ──────────
@@ -322,10 +323,20 @@ function computeAnalysis(runData, nutritionItems, symptoms, runType) {
     fix: "Mg含有の電解質タブレットが有効。ナッツ類・バナナも補給源になります。",
   });
 
-  if (has("gi")) insights.push({
-    type: "info", icon: "😟", title: "胃腸の不快感は補給の「密度」が原因かも",
+  if (has("gi") || has("nausea")) insights.push({
+    type: "warn", icon: "😟", title: "胃腸の不快感は補給の「密度」が原因かも",
     detail: "高糖度ジェルを短時間に連続摂取すると胃に負担がかかります。",
     fix: "ジェルは必ず水と一緒に。固形物・液体・ジェルを時間軸で分散させましょう。",
+  });
+
+  if (has("acid")) insights.push({
+    type: "warn", icon: "🔥", title: "胃酸・しゃっくりの原因を分析",
+    detail: [
+      "後半の長時間運動で胃の蠕動が低下すると胃酸が逆流しやすくなります。",
+      hours >= 8 ? `${Math.round(hours)}時間超のレースでは特に${Math.round(hours * 0.65)}〜${Math.round(hours * 0.75)}時間付近から胃腸が限界を迎えることが多いです。` : "",
+      "レモン・シトラス系フレーバーの補給食に含まれるクエン酸が胃を刺激し悪化させることがあります。",
+    ].filter(Boolean).join(" "),
+    fix: "①後半はニュートラルフレーバー（ノンフレーバー）に切り替える ②エイドで固形食（おにぎり・バナナ）を必ず胃に入れて緩衝材にする ③電解質タブレットで塩分を小刻みに補給してデキストリンの浸透圧負荷を下げる ④しゃっくりが出たら少量の冷水を一気飲みして胃を落ち着かせる",
   });
 
   const allGood = carbScore >= 80 && waterScore >= 80 && sodiumScore >= 80 && kScore >= 80 && mgScore >= 80;
@@ -2953,6 +2964,7 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
   const [nutritionItems, setNutritionItems] = useState(activity.nutritionItems || []);
   const [symptoms, setSymptoms]   = useState(activity.symptoms || []);
   const [feeling,  setFeeling]    = useState(activity.feeling  || 3);
+  const [actType,  setActType]    = useState(activity.activityType || "training");
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [showCustomDrink,   setShowCustomDrink]   = useState(false);
 
@@ -3047,7 +3059,7 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
       ? [...segItems, ...nutritionItems.filter(i => !segItems.find(s => s.id === i.id))]
       : nutritionItems;
     const newAnalysis = computeAnalysis(activity.runData, finalItems, symptoms, runType);
-    onSave({ ...activity, nutritionItems: finalItems, segFuel, symptoms, feeling, analysis: newAnalysis });
+    onSave({ ...activity, nutritionItems: finalItems, segFuel, symptoms, feeling, activityType: actType, analysis: newAnalysis });
   }
 
   const FEELING_OPTIONS = [
@@ -3062,12 +3074,30 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
         fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif", color: "#e2e8f0" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px", paddingTop: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px", paddingTop: "8px" }}>
           <button onClick={onClose} style={{ background: "rgba(30,41,59,0.8)", border: "1px solid rgba(148,163,184,0.1)", color: "#94a3b8", borderRadius: "10px", padding: "8px 14px", cursor: "pointer", fontSize: "14px", fontWeight: "700" }}>✕ 閉じる</button>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: "16px", fontWeight: "800", color: "#f1f5f9" }}>補給を記録</div>
             <div style={{ fontSize: "14px", color: "#64748b" }}>{activity.runData.title || "トレーニングラン"}</div>
           </div>
+        </div>
+
+        {/* Race / Training toggle */}
+        <div style={{ display: "flex", gap: "6px", marginBottom: "16px" }}>
+          {[
+            { val: "race",     icon: "🏆", label: "レース" },
+            { val: "training", icon: "🏃", label: "トレーニング" },
+          ].map(({ val, icon, label }) => (
+            <button key={val} onClick={() => setActType(val)} style={{
+              flex: 1, padding: "8px 10px", borderRadius: "10px", cursor: "pointer",
+              background: actType === val
+                ? (val === "race" ? "rgba(251,191,36,0.15)" : "rgba(99,102,241,0.15)")
+                : "rgba(30,41,59,0.4)",
+              border: `1px solid ${actType === val ? (val === "race" ? "rgba(251,191,36,0.4)" : "rgba(99,102,241,0.4)") : "rgba(148,163,184,0.08)"}`,
+              color: actType === val ? (val === "race" ? "#fbbf24" : "#a5b4fc") : "#475569",
+              fontSize: "14px", fontWeight: "700",
+            }}>{icon} {label}</button>
+          ))}
         </div>
 
         {/* Run summary */}
@@ -3380,12 +3410,24 @@ function ActivityCard({ activity, onEdit }) {
   const { runData, analysis } = activity;
   const score = analysis?.overallScore;
   const scoreColor = score >= 80 ? "#4ade80" : score >= 55 ? "#fbbf24" : "#f87171";
+  const isRace = activity.activityType === "race";
   return (
-    <div style={{ ...cardBase, marginBottom: "10px", padding: "14px 16px" }}>
+    <div style={{
+      ...cardBase, marginBottom: "10px", padding: "14px 16px",
+      borderColor: isRace ? "rgba(251,191,36,0.2)" : undefined,
+      background: isRace ? "rgba(251,191,36,0.04)" : undefined,
+    }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "14px", fontWeight: "700", color: "#f1f5f9", marginBottom: "6px" }}>
-            {runData.title || "トレーニングラン"}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+            {isRace && (
+              <span style={{ fontSize: "11px", fontWeight: "800", color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.25)", borderRadius: "5px", padding: "1px 6px", letterSpacing: "0.5px" }}>
+                🏆 RACE
+              </span>
+            )}
+            <div style={{ fontSize: "14px", fontWeight: "700", color: "#f1f5f9" }}>
+              {runData.title || (isRace ? "レース" : "トレーニングラン")}
+            </div>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", fontSize: "14px", color: "#94a3b8" }}>
             <span>📍 {Math.round((runData.dist || 0) * 10) / 10}km</span>
@@ -3406,9 +3448,10 @@ function ActivityCard({ activity, onEdit }) {
           <button onClick={e => { e.stopPropagation(); onEdit(); }} style={{
             width: "100%", padding: "8px", borderRadius: "10px", border: "none",
             background: (!activity.nutritionItems || activity.nutritionItems.length === 0)
-              ? "rgba(99,102,241,0.15)" : "rgba(30,41,59,0.4)",
+              ? (isRace ? "rgba(251,191,36,0.12)" : "rgba(99,102,241,0.15)")
+              : "rgba(30,41,59,0.4)",
             color: (!activity.nutritionItems || activity.nutritionItems.length === 0)
-              ? "#a5b4fc" : "#64748b",
+              ? (isRace ? "#fbbf24" : "#a5b4fc") : "#64748b",
             fontSize: "14px", fontWeight: "700", cursor: "pointer",
           }}>
             {(!activity.nutritionItems || activity.nutritionItems.length === 0) ? "📝 補給を記録する" : "✏️ 補給を編集"}
@@ -3481,19 +3524,26 @@ function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivi
         </div>
 
         {/* Summary stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "20px" }}>
-          {[
-            { label: "トレーニング", value: activities.length, unit: "回" },
-            { label: "総距離", value: `${Math.round(totalDist * 10) / 10}`, unit: "km" },
-            { label: "総時間", value: fmt(totalMins), unit: "" },
-          ].map(({ label, value, unit }) => (
-            <div key={label} style={{ ...cardBase, textAlign: "center", padding: "12px 8px" }}>
-              <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "4px" }}>{label}</div>
-              <div style={{ fontSize: unit ? "18px" : "13px", fontWeight: "900", color: "#f1f5f9" }}>{value}</div>
-              {unit && <div style={{ fontSize: "14px", color: "#475569" }}>{unit}</div>}
+        {(() => {
+          const raceCount = activities.filter(a => a.activityType === "race").length;
+          const trainCount = activities.length - raceCount;
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", marginBottom: "20px" }}>
+              {[
+                { label: "🏆 レース", value: raceCount, unit: "回", gold: true },
+                { label: "🏃 練習", value: trainCount, unit: "回" },
+                { label: "総距離", value: `${Math.round(totalDist * 10) / 10}`, unit: "km" },
+                { label: "総時間", value: fmt(totalMins), unit: "" },
+              ].map(({ label, value, unit, gold }) => (
+                <div key={label} style={{ ...cardBase, textAlign: "center", padding: "10px 4px", borderColor: gold ? "rgba(251,191,36,0.15)" : undefined }}>
+                  <div style={{ fontSize: "11px", color: gold ? "#92400e" : "#64748b", marginBottom: "4px" }}>{label}</div>
+                  <div style={{ fontSize: unit ? "16px" : "12px", fontWeight: "900", color: gold ? "#fbbf24" : "#f1f5f9" }}>{value}</div>
+                  {unit && <div style={{ fontSize: "11px", color: "#475569" }}>{unit}</div>}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {/* Period toggle + log header */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: "12px" }}>
@@ -3608,7 +3658,17 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
     reader.onload = e => {
       const result = parseActivityCSV(e.target.result);
       if (result) {
-        const newAct = { id: Date.now(), runData: result, analysis: computeAnalysis(result, [], [], runType), nutritionItems: [], symptoms: [], feeling: 3, addedAt: new Date().toISOString() };
+        // Auto-detect race from filename or title
+        const raceKeywords = ["レース", "race", "trail", "トレイル", "大会", "マラソン", "marathon", "ultra", "ウルトラ"];
+        const nameHint = (file.name + " " + (result.title || "")).toLowerCase();
+        const detectedType = raceKeywords.some(k => nameHint.includes(k)) ? "race" : "training";
+        const newAct = {
+          id: Date.now(), runData: result,
+          analysis: computeAnalysis(result, [], [], runType),
+          nutritionItems: [], symptoms: [], feeling: 3,
+          activityType: detectedType,
+          addedAt: new Date().toISOString(),
+        };
         const next = [...activities, newAct];
         updateActivities(next);
         setEditingActivity(newAct);
