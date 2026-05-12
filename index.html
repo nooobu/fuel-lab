@@ -252,7 +252,7 @@ function parseActivityCSV(text) {
 }
 
 // ─── Analysis engine ───────────────────────────────────────────────────────
-function computeAnalysis(runData, nutritionItems, symptoms, runType) {
+function computeAnalysis(runData, nutritionItems, symptoms, runType, aidLogs = []) {
   const hours = runData.durationMins / 60;
   const isTrail = runType === "trail";
 
@@ -346,6 +346,27 @@ function computeAnalysis(runData, nutritionItems, symptoms, runType) {
       "【応急処置】しゃっくりが出たら冷水を一気飲み→息を10秒止める。これで約7割は止まります。",
     ].join(" "),
   });
+
+  // AID log analysis
+  if (aidLogs.length > 0) {
+    const dist = runData.dist || 0;
+    const lateAidsNoSolid = aidLogs.filter(a => a.km >= dist * 0.55 && !a.hasSolid);
+    const lateAidsGood    = aidLogs.filter(a => a.km >= dist * 0.55 && a.hasSolid);
+    if (lateAidsNoSolid.length > 0) {
+      insights.push({
+        type: "warn", icon: "🏁", title: `後半エイド${lateAidsNoSolid.length}箇所で固形食なし`,
+        detail: `${lateAidsNoSolid.map(a => `AID ${a.km}km`).join("・")} で固形食を摂っていません。後半エイドで液体のみだと胃酸の緩衝材がなくなり、GIトラブルのリスクが高まります。`,
+        fix: "後半エイドでは必ずおにぎり・バナナ・じゃがいもなど固形食を最低1口食べる。液体系AIDの場合はドロップバッグにおにぎりを事前に入れておく。",
+      });
+    }
+    if (lateAidsGood.length > 0 && lateAidsNoSolid.length === 0) {
+      insights.push({
+        type: "good", icon: "🏁", title: "後半エイドの固形食は完璧！",
+        detail: `後半${lateAidsGood.length}箇所のエイドで固形食を摂れています。胃への緩衝材として機能し、GIトラブルの予防につながります。`,
+        fix: "このパターンを次回も維持しましょう。",
+      });
+    }
+  }
 
   const allGood = carbScore >= 80 && waterScore >= 80 && sodiumScore >= 80 && kScore >= 80 && mgScore >= 80;
   if (insights.length === 0 || allGood) insights.push({
@@ -2973,8 +2994,22 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
   const [symptoms, setSymptoms]   = useState(activity.symptoms || []);
   const [feeling,  setFeeling]    = useState(activity.feeling  || 3);
   const [actType,  setActType]    = useState(activity.activityType || "training");
+  const [aidLogs,  setAidLogs]    = useState(activity.aidLogs || []);
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [showCustomDrink,   setShowCustomDrink]   = useState(false);
+
+  function addAidLog() {
+    const dist = activity.runData?.dist || 0;
+    const lastKm = aidLogs.length > 0 ? aidLogs[aidLogs.length - 1].km : 0;
+    const nextKm = Math.min(dist, Math.round(lastKm + dist / 6));
+    setAidLogs(prev => [...prev, { id: Date.now(), km: nextKm, notes: "", hasSolid: true }]);
+  }
+  function updateAidLog(id, patch) {
+    setAidLogs(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
+  }
+  function removeAidLog(id) {
+    setAidLogs(prev => prev.filter(a => a.id !== id));
+  }
 
   // ─── 区間トラッキング (5km刻み) ──────────────────────────────────────────
   const SEGMENT_KM = 5;
@@ -3062,12 +3097,11 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
   }
   function handleSave() {
     const segItems = flattenSeg();
-    // Merge: segment-derived totals take priority; append any extra items logged directly
     const finalItems = segItems.length > 0
       ? [...segItems, ...nutritionItems.filter(i => !segItems.find(s => s.id === i.id))]
       : nutritionItems;
-    const newAnalysis = computeAnalysis(activity.runData, finalItems, symptoms, runType);
-    onSave({ ...activity, nutritionItems: finalItems, segFuel, symptoms, feeling, activityType: actType, analysis: newAnalysis });
+    const newAnalysis = computeAnalysis(activity.runData, finalItems, symptoms, runType, actType === "race" ? aidLogs : []);
+    onSave({ ...activity, nutritionItems: finalItems, segFuel, aidLogs, symptoms, feeling, activityType: actType, analysis: newAnalysis });
   }
 
   const FEELING_OPTIONS = [
@@ -3109,11 +3143,101 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
         </div>
 
         {/* Run summary */}
-        <div style={{ ...cardBase, marginBottom: "20px", padding: "12px 16px", display: "flex", gap: "16px", fontSize: "14px", color: "#94a3b8" }}>
+        <div style={{ ...cardBase, marginBottom: "16px", padding: "12px 16px", display: "flex", gap: "16px", fontSize: "14px", color: "#94a3b8" }}>
           <span>📍 {(activity.runData.dist || 0).toFixed(1)}km</span>
           <span>⏱ {fmt(activity.runData.durationMins)}</span>
           {activity.runData.ascent > 0 && <span>↑{activity.runData.ascent}m</span>}
         </div>
+
+        {/* ─── AIDステーション記録（レース時のみ） ────────────────────────── */}
+        {actType === "race" && (
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+              <div>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "#fbbf24", letterSpacing: "1px", textTransform: "uppercase" }}>🏁 AIDステーション</div>
+                <div style={{ fontSize: "12px", color: "#475569", marginTop: "2px" }}>各エイドで食べたものを記録（診断に使用）</div>
+              </div>
+              <button onClick={addAidLog} style={{
+                padding: "7px 12px", borderRadius: "10px", border: "1px solid rgba(251,191,36,0.3)",
+                background: "rgba(251,191,36,0.1)", color: "#fbbf24", fontSize: "13px", fontWeight: "700", cursor: "pointer",
+              }}>+ AID追加</button>
+            </div>
+
+            {aidLogs.length === 0 ? (
+              <button onClick={addAidLog} style={{
+                width: "100%", padding: "16px", borderRadius: "14px",
+                border: "2px dashed rgba(251,191,36,0.25)", background: "rgba(251,191,36,0.04)",
+                color: "#92400e", fontSize: "14px", fontWeight: "700", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+              }}>
+                🏁 AIDステーションの食事を記録する（レース必須）
+              </button>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {[...aidLogs].sort((a, b) => a.km - b.km).map((aid, i) => {
+                  const dist = activity.runData?.dist || 100;
+                  const isLateRace = aid.km >= dist * 0.55;
+                  const riskAlert = isLateRace && !aid.hasSolid;
+                  return (
+                    <div key={aid.id} style={{
+                      borderRadius: "12px", padding: "12px 14px",
+                      background: riskAlert ? "rgba(239,68,68,0.07)" : "rgba(15,23,42,0.5)",
+                      border: `1px solid ${riskAlert ? "rgba(239,68,68,0.3)" : "rgba(251,191,36,0.15)"}`,
+                    }}>
+                      {/* Header row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+                        <span style={{ fontSize: "13px", fontWeight: "800", color: "#fbbf24", minWidth: "38px" }}>AID{i + 1}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "5px", flex: 1 }}>
+                          <input
+                            type="number" min="0" max={Math.ceil(dist)} value={aid.km}
+                            onChange={e => updateAidLog(aid.id, { km: +e.target.value || 0 })}
+                            style={{ width: "60px", padding: "4px 8px", borderRadius: "7px", border: "1px solid rgba(251,191,36,0.25)", background: "rgba(15,23,42,0.7)", color: "#fbbf24", fontSize: "14px", fontWeight: "800", textAlign: "center", outline: "none" }}
+                          />
+                          <span style={{ fontSize: "13px", color: "#475569" }}>km</span>
+                          {isLateRace && <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "4px" }}>後半</span>}
+                        </div>
+                        <button onClick={() => removeAidLog(aid.id)} style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: "16px", padding: "0 2px" }}>×</button>
+                      </div>
+
+                      {/* Food notes */}
+                      <input
+                        placeholder="食べたもの（例：味噌汁・おにぎり・バナナ）"
+                        value={aid.notes}
+                        onChange={e => updateAidLog(aid.id, { notes: e.target.value })}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.1)", background: "rgba(15,23,42,0.6)", color: "#e2e8f0", fontSize: "14px", outline: "none", boxSizing: "border-box", marginBottom: "8px" }}
+                      />
+
+                      {/* Solid food toggle */}
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        {[
+                          { val: true,  icon: "🍙", label: "固形食あり" },
+                          { val: false, icon: "🫗", label: "液体のみ" },
+                        ].map(({ val, icon, label }) => (
+                          <button key={String(val)} onClick={() => updateAidLog(aid.id, { hasSolid: val })} style={{
+                            flex: 1, padding: "7px 8px", borderRadius: "8px", cursor: "pointer",
+                            background: aid.hasSolid === val
+                              ? (val ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.12)")
+                              : "rgba(30,41,59,0.4)",
+                            border: `1px solid ${aid.hasSolid === val ? (val ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.3)") : "rgba(148,163,184,0.07)"}`,
+                            color: aid.hasSolid === val ? (val ? "#4ade80" : "#f87171") : "#475569",
+                            fontSize: "13px", fontWeight: "700",
+                          }}>{icon} {label}</button>
+                        ))}
+                      </div>
+
+                      {/* Risk alert */}
+                      {riskAlert && (
+                        <div style={{ marginTop: "8px", padding: "7px 10px", borderRadius: "7px", background: "rgba(239,68,68,0.1)", fontSize: "12px", color: "#f87171", fontWeight: "600" }}>
+                          ⚠️ 後半エイドで固形食なし → 胃酸リスクあり
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Modals */}
         {showProductSearch && (
