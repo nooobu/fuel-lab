@@ -2956,6 +2956,59 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [showCustomDrink,   setShowCustomDrink]   = useState(false);
 
+  // ─── 区間トラッキング (5km刻み) ──────────────────────────────────────────
+  const SEGMENT_KM = 5;
+  const segments = React.useMemo(() => {
+    const { dist = 0, durationMins = 0 } = activity.runData || {};
+    if (!dist) return [];
+    return Array.from({ length: Math.ceil(dist / SEGMENT_KM) }, (_, i) => {
+      const s = i * SEGMENT_KM, e = Math.min(s + SEGMENT_KM, dist);
+      return { idx: i, startKm: s, endKm: e, startMins: (s / dist) * durationMins, endMins: (e / dist) * durationMins };
+    });
+  }, [activity.runData]);
+  const [segFuel, setSegFuel] = useState(activity.segFuel || {});
+  const [openSeg, setOpenSeg] = useState(null);
+  const [showSegCustom, setShowSegCustom] = useState(false);
+  const [segCustomDraft, setSegCustomDraft] = useState({ name: "", carbs: 0, water: 0, sodium: 0, k: 0, mg: 0, qty: 1, unit: "個" });
+
+  function segToggle(si, id) {
+    setSegFuel(prev => {
+      const cur = prev[si] || [];
+      if (cur.find(x => x.id === id)) return { ...prev, [si]: cur.filter(x => x.id !== id) };
+      const p = NUTRITION_PRESETS.find(x => x.id === id);
+      return { ...prev, [si]: [...cur, { id, qty: p.defaultQty }] };
+    });
+  }
+  function segAdjust(si, id, dir) {
+    setSegFuel(prev => ({
+      ...prev,
+      [si]: (prev[si] || []).map(x => {
+        if (x.id !== id) return x;
+        const p = NUTRITION_PRESETS.find(p => p.id === id);
+        const step = p.unit === "ml" ? (p.defaultQty >= 150 ? 100 : 50) : 1;
+        return { ...x, qty: Math.max(step, x.qty + dir * step) };
+      }),
+    }));
+  }
+  function addSegCustom(si) {
+    if (!segCustomDraft.name.trim()) return;
+    setSegFuel(prev => ({
+      ...prev,
+      [si]: [...(prev[si] || []), { id: `custom_${Date.now()}`, ...segCustomDraft }],
+    }));
+    setSegCustomDraft({ name: "", carbs: 0, water: 0, sodium: 0, k: 0, mg: 0, qty: 1, unit: "個" });
+    setShowSegCustom(false);
+  }
+  function flattenSeg() {
+    const acc = {};
+    Object.values(segFuel).flat().forEach(item => {
+      const p = NUTRITION_PRESETS.find(x => x.id === item.id);
+      if (!acc[item.id]) acc[item.id] = { id: item.id, qty: 0, name: item.name || p?.name, unit: item.unit || p?.unit, carbs: item.carbs ?? p?.carbs ?? 0, sodium: item.sodium ?? p?.sodium ?? 0, water: item.water ?? p?.water ?? 0, k: item.k ?? p?.k ?? 0, mg: item.mg ?? p?.mg ?? 0 };
+      acc[item.id].qty += item.qty;
+    });
+    return Object.values(acc);
+  }
+
   function addProductItem(product) {
     setNutritionItems(prev => {
       if (prev.find(i => i.id === product.id)) return prev;
@@ -2988,8 +3041,13 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
     });
   }
   function handleSave() {
-    const newAnalysis = computeAnalysis(activity.runData, nutritionItems, symptoms, runType);
-    onSave({ ...activity, nutritionItems, symptoms, feeling, analysis: newAnalysis });
+    const segItems = flattenSeg();
+    // Merge: segment-derived totals take priority; append any extra items logged directly
+    const finalItems = segItems.length > 0
+      ? [...segItems, ...nutritionItems.filter(i => !segItems.find(s => s.id === i.id))]
+      : nutritionItems;
+    const newAnalysis = computeAnalysis(activity.runData, finalItems, symptoms, runType);
+    onSave({ ...activity, nutritionItems: finalItems, segFuel, symptoms, feeling, analysis: newAnalysis });
   }
 
   const FEELING_OPTIONS = [
@@ -3035,9 +3093,6 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
           />
         )}
 
-        {/* Nutrition picker */}
-        <div style={{ fontSize: "14px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "10px" }}>補給したもの</div>
-
         {/* Action buttons */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
           <button onClick={() => setShowProductSearch(true)} style={{ flex: 1, padding: "11px 8px", borderRadius: "12px", border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)", color: "#a5b4fc", cursor: "pointer", fontSize: "14px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "5px" }}>
@@ -3048,6 +3103,167 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
           </button>
         </div>
 
+        {/* ─── 区間別補給（5km刻み） ─────────────────────────────────────────── */}
+        {segments.length > 0 && (
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{ fontSize: "14px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "6px" }}>区間別補給</div>
+            <div style={{ fontSize: "14px", color: "#475569", marginBottom: "10px" }}>各5km区間をタップして補給を記録</div>
+
+            {/* Segment cards */}
+            <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "8px", marginBottom: "4px", WebkitOverflowScrolling: "touch" }}>
+              {segments.map(seg => {
+                const items = segFuel[seg.idx] || [];
+                const isActive = openSeg === seg.idx;
+                const isEmpty = items.length === 0;
+                return (
+                  <div key={seg.idx} onClick={() => setOpenSeg(isActive ? null : seg.idx)} style={{
+                    minWidth: "140px", padding: "12px 10px", borderRadius: "14px", cursor: "pointer", flexShrink: 0,
+                    background: isActive ? "rgba(99,102,241,0.18)" : isEmpty ? "rgba(30,41,59,0.35)" : "rgba(30,41,59,0.6)",
+                    border: `1px solid ${isActive ? "rgba(99,102,241,0.45)" : isEmpty ? "rgba(148,163,184,0.08)" : "rgba(34,197,94,0.2)"}`,
+                    transition: "all 0.15s",
+                  }}>
+                    <div style={{ fontSize: "14px", fontWeight: "800", color: isActive ? "#818cf8" : "#f1f5f9", marginBottom: "1px" }}>
+                      {seg.startKm}–{Number.isInteger(seg.endKm) ? seg.endKm : seg.endKm.toFixed(1)}km
+                    </div>
+                    <div style={{ fontSize: "14px", color: "#475569", marginBottom: "8px" }}>{fmtT(seg.startMins)}–{fmtT(seg.endMins)}</div>
+                    {items.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                        {items.map(item => {
+                          const p = NUTRITION_PRESETS.find(x => x.id === item.id);
+                          const displayName = item.name || p?.name || "?";
+                          const displayUnit = item.unit || p?.unit || "";
+                          return (
+                            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "3px 6px", borderRadius: "20px", fontSize: "14px", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.18)", color: "#a5b4fc" }}>
+                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</span>
+                              <span style={{ color: "#64748b", flexShrink: 0 }}>{item.qty}{displayUnit}</span>
+                              <span onClick={e => { e.stopPropagation(); segToggle(seg.idx, item.id); }} style={{ cursor: "pointer", color: "#475569", marginLeft: "2px", fontSize: "14px" }}>×</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: "14px", color: "#334155", paddingTop: "6px" }}>+ タップで追加</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Item picker panel */}
+            {openSeg !== null && segments[openSeg] && (
+              <div style={{ borderRadius: "14px", background: "rgba(10,14,23,0.97)", border: "1px solid rgba(99,102,241,0.2)", marginBottom: "12px", overflow: "hidden", marginTop: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", borderBottom: "1px solid rgba(148,163,184,0.07)" }}>
+                  <span style={{ fontSize: "14px", fontWeight: "700", color: "#f1f5f9", flex: 1 }}>
+                    {segments[openSeg].startKm}–{Number.isInteger(segments[openSeg].endKm) ? segments[openSeg].endKm : segments[openSeg].endKm.toFixed(1)}km の補給
+                  </span>
+                  <button onClick={() => setOpenSeg(null)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "20px", lineHeight: 1, padding: 0 }}>×</button>
+                </div>
+                <div style={{ padding: "10px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                  {NUTRITION_PRESETS.map((preset, ci) => {
+                    const sel = (segFuel[openSeg] || []).find(x => x.id === preset.id);
+                    return (
+                      <div key={preset.id}>
+                        <div onClick={() => segToggle(openSeg, preset.id)} style={{
+                          display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderRadius: "10px", cursor: "pointer",
+                          background: sel ? "rgba(99,102,241,0.15)" : "rgba(30,41,59,0.5)",
+                          border: `1px solid ${sel ? "rgba(99,102,241,0.3)" : "rgba(148,163,184,0.06)"}`,
+                        }}>
+                          <span style={{ fontSize: "18px" }}>{preset.icon}</span>
+                          <span style={{ fontSize: "14px", color: sel ? "#c4b5fd" : "#94a3b8", fontWeight: sel ? "700" : "400", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preset.name}</span>
+                        </div>
+                        {sel && (
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px" }}>
+                            <button onClick={() => segAdjust(openSeg, preset.id, -1)} style={{ width: "24px", height: "24px", borderRadius: "6px", border: "none", background: "rgba(148,163,184,0.1)", color: "#94a3b8", cursor: "pointer", fontSize: "15px" }}>−</button>
+                            <span style={{ flex: 1, textAlign: "center", fontSize: "14px", fontWeight: "700", color: "#f1f5f9" }}>{sel.qty}{preset.unit}</span>
+                            <button onClick={() => segAdjust(openSeg, preset.id, 1)} style={{ width: "24px", height: "24px", borderRadius: "6px", border: "none", background: "rgba(99,102,241,0.15)", color: "#818cf8", cursor: "pointer", fontSize: "15px" }}>＋</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Custom item */}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    {!showSegCustom ? (
+                      <button onClick={() => setShowSegCustom(true)} style={{
+                        width: "100%", padding: "10px 12px", borderRadius: "10px", cursor: "pointer",
+                        background: "rgba(245,158,11,0.08)", border: "1px dashed rgba(245,158,11,0.3)",
+                        color: "#f59e0b", fontSize: "14px", fontWeight: "700", textAlign: "left",
+                      }}>✨ カスタムアイテムを追加</button>
+                    ) : (
+                      <div style={{ borderRadius: "12px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)", padding: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ fontSize: "14px", fontWeight: "700", color: "#f59e0b", marginBottom: "2px" }}>✨ カスタムアイテム</div>
+                        <input placeholder="アイテム名（例：自作ジェル）" value={segCustomDraft.name}
+                          onChange={e => setSegCustomDraft(d => ({ ...d, name: e.target.value }))}
+                          style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: "1px solid rgba(245,158,11,0.3)", background: "rgba(15,23,42,0.6)", color: "#e2e8f0", fontSize: "14px", outline: "none", boxSizing: "border-box" }}
+                        />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                          <label style={{ fontSize: "14px", color: "#64748b", display: "flex", flexDirection: "column", gap: "3px" }}>
+                            量<input type="number" min="1" value={segCustomDraft.qty}
+                              onChange={e => setSegCustomDraft(d => ({ ...d, qty: +e.target.value || 1 }))}
+                              style={{ padding: "7px 10px", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.15)", background: "rgba(15,23,42,0.6)", color: "#e2e8f0", fontSize: "14px", outline: "none" }} />
+                          </label>
+                          <label style={{ fontSize: "14px", color: "#64748b", display: "flex", flexDirection: "column", gap: "3px" }}>
+                            単位<select value={segCustomDraft.unit} onChange={e => setSegCustomDraft(d => ({ ...d, unit: e.target.value }))}
+                              style={{ padding: "7px 10px", borderRadius: "8px", border: "1px solid rgba(148,163,184,0.15)", background: "rgba(15,23,42,0.6)", color: "#e2e8f0", fontSize: "14px", outline: "none" }}>
+                              {["個","本","粒","g","ml","袋","枚"].map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
+                          {[
+                            { key: "carbs", label: "糖質(g)", color: "#fbbf24" },
+                            { key: "water", label: "水分(ml)", color: "#60a5fa" },
+                            { key: "sodium", label: "Na(mg)", color: "#c4b5fd" },
+                          ].map(({ key, label, color }) => (
+                            <label key={key} style={{ fontSize: "14px", color: "#64748b", display: "flex", flexDirection: "column", gap: "3px" }}>
+                              {label}
+                              <input type="number" min="0" value={segCustomDraft[key]}
+                                onChange={e => setSegCustomDraft(d => ({ ...d, [key]: +e.target.value || 0 }))}
+                                style={{ padding: "5px 6px", borderRadius: "6px", border: `1px solid ${color}33`, background: `${color}11`, color, fontSize: "14px", fontWeight: "700", outline: "none", width: "100%", boxSizing: "border-box" }}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button onClick={() => { setShowSegCustom(false); setSegCustomDraft({ name: "", carbs: 0, water: 0, sodium: 0, k: 0, mg: 0, qty: 1, unit: "個" }); }}
+                            style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: "rgba(148,163,184,0.1)", color: "#64748b", cursor: "pointer", fontSize: "14px" }}>キャンセル</button>
+                          <button onClick={() => addSegCustom(openSeg)} disabled={!segCustomDraft.name.trim()}
+                            style={{ flex: 2, padding: "8px", borderRadius: "8px", border: "none", background: segCustomDraft.name.trim() ? "rgba(245,158,11,0.2)" : "rgba(30,41,59,0.3)", color: segCustomDraft.name.trim() ? "#f59e0b" : "#334155", cursor: segCustomDraft.name.trim() ? "pointer" : "default", fontSize: "14px", fontWeight: "700" }}>追加する</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Per-segment totals */}
+            <div style={{ display: "flex", gap: "6px", overflowX: "auto", marginBottom: "4px", WebkitOverflowScrolling: "touch" }}>
+              {segments.map(seg => {
+                const t = segTotals(segFuel[seg.idx]);
+                const isEmpty = !(segFuel[seg.idx]?.length);
+                const isActive = openSeg === seg.idx;
+                return (
+                  <div key={seg.idx} onClick={() => setOpenSeg(isActive ? null : seg.idx)} style={{
+                    minWidth: "74px", padding: "9px 6px", borderRadius: "10px", textAlign: "center", cursor: "pointer", flexShrink: 0,
+                    background: isEmpty ? "rgba(239,68,68,0.06)" : isActive ? "rgba(99,102,241,0.15)" : "rgba(30,41,59,0.4)",
+                    border: `1px solid ${isEmpty ? "rgba(239,68,68,0.18)" : isActive ? "rgba(99,102,241,0.3)" : "rgba(148,163,184,0.06)"}`,
+                  }}>
+                    <div style={{ fontSize: "14px", color: "#475569", marginBottom: "3px" }}>{seg.startKm}–{Number.isInteger(seg.endKm) ? seg.endKm : seg.endKm.toFixed(1)}km</div>
+                    {isEmpty
+                      ? <div style={{ fontSize: "14px", color: "#ef4444", fontWeight: "700" }}>補給なし</div>
+                      : <><div style={{ fontSize: "14px", fontWeight: "800", color: "#fbbf24" }}>{t.carbs}g</div><div style={{ fontSize: "14px", color: "#64748b" }}>Na {t.na}mg</div></>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── 全体補給（プリセット） ─────────────────────────────────────────── */}
+        <div style={{ fontSize: "14px", fontWeight: "700", color: "#94a3b8", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "10px" }}>全体の補給合計</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
           {NUTRITION_PRESETS.map(preset => {
             const selected = nutritionItems.find(i => i.id === preset.id);
