@@ -3054,15 +3054,30 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
       return { ...prev, [si]: [...cur, { id, qty: p.defaultQty }] };
     });
   }
+  function segStep(p) {
+    if (!p) return 5;
+    if (p.unit === "ml")  return p.defaultQty >= 300 ? 100 : 50;
+    if (p.unit === "mg")  return p.defaultQty >= 200 ? 50 : 25;
+    if (p.unit === "粒")  return 1;
+    return 5; // g, 個, 本 etc.
+  }
   function segAdjust(si, id, dir) {
     setSegFuel(prev => ({
       ...prev,
       [si]: (prev[si] || []).map(x => {
         if (x.id !== id) return x;
         const p = NUTRITION_PRESETS.find(p => p.id === id);
-        const step = p.unit === "ml" ? (p.defaultQty >= 150 ? 100 : 50) : 1;
-        return { ...x, qty: Math.max(step, x.qty + dir * step) };
+        const step = segStep(p);
+        return { ...x, qty: Math.max(0, x.qty + dir * step) };
       }),
+    }));
+  }
+  function segSetQty(si, id, val) {
+    const n = parseFloat(val);
+    if (isNaN(n) || n < 0) return;
+    setSegFuel(prev => ({
+      ...prev,
+      [si]: (prev[si] || []).map(x => x.id !== id ? x : { ...x, qty: n }),
     }));
   }
   function addSegCustom(si) {
@@ -3368,10 +3383,23 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
                           <span style={{ fontSize: "14px", color: sel ? "#c4b5fd" : "#94a3b8", fontWeight: sel ? "700" : "400", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preset.name}</span>
                         </div>
                         {sel && (
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px" }}>
-                            <button onClick={() => segAdjust(openSeg, preset.id, -1)} style={{ width: "24px", height: "24px", borderRadius: "6px", border: "none", background: "rgba(148,163,184,0.1)", color: "#94a3b8", cursor: "pointer", fontSize: "15px" }}>−</button>
-                            <span style={{ flex: 1, textAlign: "center", fontSize: "14px", fontWeight: "700", color: "#f1f5f9" }}>{sel.qty}{preset.unit}</span>
-                            <button onClick={() => segAdjust(openSeg, preset.id, 1)} style={{ width: "24px", height: "24px", borderRadius: "6px", border: "none", background: "rgba(99,102,241,0.15)", color: "#818cf8", cursor: "pointer", fontSize: "15px" }}>＋</button>
+                          <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "5px 8px" }}>
+                            <button onClick={() => segAdjust(openSeg, preset.id, -1)} style={{ width: "30px", height: "30px", borderRadius: "7px", border: "none", background: "rgba(148,163,184,0.1)", color: "#94a3b8", cursor: "pointer", fontSize: "16px", flexShrink: 0 }}>−</button>
+                            <input
+                              type="number" inputMode="numeric"
+                              value={sel.qty}
+                              onChange={e => segSetQty(openSeg, preset.id, e.target.value)}
+                              style={{
+                                flex: 1, minWidth: 0, textAlign: "center",
+                                fontSize: "15px", fontWeight: "800", color: "#f1f5f9",
+                                background: "rgba(15,23,42,0.7)",
+                                border: "1px solid rgba(99,102,241,0.25)",
+                                borderRadius: "7px", padding: "4px 2px",
+                                outline: "none", WebkitAppearance: "none", MozAppearance: "textfield",
+                              }}
+                            />
+                            <span style={{ fontSize: "13px", color: "#64748b", flexShrink: 0 }}>{preset.unit}</span>
+                            <button onClick={() => segAdjust(openSeg, preset.id, 1)} style={{ width: "30px", height: "30px", borderRadius: "7px", border: "none", background: "rgba(99,102,241,0.15)", color: "#818cf8", cursor: "pointer", fontSize: "16px", flexShrink: 0 }}>＋</button>
                           </div>
                         )}
                       </div>
