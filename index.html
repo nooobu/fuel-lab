@@ -3373,33 +3373,35 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
                   {NUTRITION_PRESETS.map((preset, ci) => {
                     const sel = (segFuel[openSeg] || []).find(x => x.id === preset.id);
                     return (
-                      <div key={preset.id}>
+                      /* 選択中は2列フル幅に展開してinputを確実に操作できるようにする */
+                      <div key={preset.id} style={{ gridColumn: sel ? "1 / -1" : "auto" }}>
                         <div onClick={() => segToggle(openSeg, preset.id)} style={{
                           display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderRadius: "10px", cursor: "pointer",
                           background: sel ? "rgba(99,102,241,0.15)" : "rgba(30,41,59,0.5)",
                           border: `1px solid ${sel ? "rgba(99,102,241,0.3)" : "rgba(148,163,184,0.06)"}`,
                         }}>
                           <span style={{ fontSize: "18px" }}>{preset.icon}</span>
-                          <span style={{ fontSize: "14px", color: sel ? "#c4b5fd" : "#94a3b8", fontWeight: sel ? "700" : "400", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preset.name}</span>
+                          <span style={{ fontSize: "14px", color: sel ? "#c4b5fd" : "#94a3b8", fontWeight: sel ? "700" : "400", flex: 1 }}>{preset.name}</span>
+                          {sel && <span style={{ fontSize: "13px", color: "#6366f1" }}>✓</span>}
                         </div>
                         {sel && (
-                          <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "5px 8px" }}>
-                            <button onClick={() => segAdjust(openSeg, preset.id, -1)} style={{ width: "30px", height: "30px", borderRadius: "7px", border: "none", background: "rgba(148,163,184,0.1)", color: "#94a3b8", cursor: "pointer", fontSize: "16px", flexShrink: 0 }}>−</button>
+                          <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 4px" }}>
+                            <button onClick={() => segAdjust(openSeg, preset.id, -1)} style={{ width: "44px", height: "44px", borderRadius: "10px", border: "none", background: "rgba(148,163,184,0.12)", color: "#94a3b8", cursor: "pointer", fontSize: "20px", flexShrink: 0 }}>−</button>
                             <input
                               type="number" inputMode="numeric"
                               value={sel.qty}
                               onChange={e => segSetQty(openSeg, preset.id, e.target.value)}
                               style={{
-                                flex: 1, minWidth: 0, textAlign: "center",
-                                fontSize: "15px", fontWeight: "800", color: "#f1f5f9",
-                                background: "rgba(15,23,42,0.7)",
-                                border: "1px solid rgba(99,102,241,0.25)",
-                                borderRadius: "7px", padding: "4px 2px",
+                                flex: 1, textAlign: "center",
+                                fontSize: "22px", fontWeight: "800", color: "#f1f5f9",
+                                background: "rgba(15,23,42,0.8)",
+                                border: "1px solid rgba(99,102,241,0.3)",
+                                borderRadius: "10px", padding: "8px 4px",
                                 outline: "none", WebkitAppearance: "none", MozAppearance: "textfield",
                               }}
                             />
-                            <span style={{ fontSize: "13px", color: "#64748b", flexShrink: 0 }}>{preset.unit}</span>
-                            <button onClick={() => segAdjust(openSeg, preset.id, 1)} style={{ width: "30px", height: "30px", borderRadius: "7px", border: "none", background: "rgba(99,102,241,0.15)", color: "#818cf8", cursor: "pointer", fontSize: "16px", flexShrink: 0 }}>＋</button>
+                            <span style={{ fontSize: "15px", color: "#64748b", flexShrink: 0, minWidth: "28px" }}>{preset.unit}</span>
+                            <button onClick={() => segAdjust(openSeg, preset.id, 1)} style={{ width: "44px", height: "44px", borderRadius: "10px", border: "none", background: "rgba(99,102,241,0.18)", color: "#818cf8", cursor: "pointer", fontSize: "20px", flexShrink: 0 }}>＋</button>
                           </div>
                         )}
                       </div>
