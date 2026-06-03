@@ -3357,7 +3357,7 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
 
             {/* Item picker panel */}
             {openSeg !== null && segments[openSeg] && (
-              <div style={{ borderRadius: "14px", background: "rgba(10,14,23,0.97)", border: "1px solid rgba(99,102,241,0.2)", marginBottom: "12px", overflow: "hidden", marginTop: "8px" }}>
+              <div style={{ borderRadius: "14px", background: "rgba(10,14,23,0.97)", border: "1px solid rgba(99,102,241,0.2)", marginBottom: "12px", marginTop: "8px" }}>
                 <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", borderBottom: "1px solid rgba(148,163,184,0.07)" }}>
                   <div style={{ flex: 1 }}>
                     {segments[openSeg].label && (
@@ -3385,22 +3385,23 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
                           {sel && <span style={{ fontSize: "13px", color: "#6366f1" }}>✓</span>}
                         </div>
                         {sel && (
-                          <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 4px" }}>
+                          <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", boxSizing: "border-box", width: "100%" }}>
                             <button onClick={() => segAdjust(openSeg, preset.id, -1)} style={{ width: "44px", height: "44px", borderRadius: "10px", border: "none", background: "rgba(148,163,184,0.12)", color: "#94a3b8", cursor: "pointer", fontSize: "20px", flexShrink: 0 }}>−</button>
                             <input
                               type="number" inputMode="numeric"
                               value={sel.qty}
                               onChange={e => segSetQty(openSeg, preset.id, e.target.value)}
                               style={{
-                                flex: 1, textAlign: "center",
+                                flex: 1, minWidth: 0, textAlign: "center",
                                 fontSize: "22px", fontWeight: "800", color: "#f1f5f9",
                                 background: "rgba(15,23,42,0.8)",
                                 border: "1px solid rgba(99,102,241,0.3)",
                                 borderRadius: "10px", padding: "8px 4px",
                                 outline: "none", WebkitAppearance: "none", MozAppearance: "textfield",
+                                boxSizing: "border-box",
                               }}
                             />
-                            <span style={{ fontSize: "15px", color: "#64748b", flexShrink: 0, minWidth: "28px" }}>{preset.unit}</span>
+                            <span style={{ fontSize: "15px", color: "#64748b", flexShrink: 0, width: "32px", textAlign: "left" }}>{preset.unit}</span>
                             <button onClick={() => segAdjust(openSeg, preset.id, 1)} style={{ width: "44px", height: "44px", borderRadius: "10px", border: "none", background: "rgba(99,102,241,0.18)", color: "#818cf8", cursor: "pointer", fontSize: "20px", flexShrink: 0 }}>＋</button>
                           </div>
                         )}
@@ -3659,9 +3660,78 @@ function ActivityCard({ activity, onEdit }) {
   );
 }
 
+// ─── Strava Import Modal ──────────────────────────────────────────────────────
+function StravaImportModal({ onImport, onClose }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+
+  function handleImport() {
+    setError("");
+    try {
+      const data = JSON.parse(text.trim());
+      if (data.source !== "strava" || !Array.isArray(data.activities)) {
+        setError("Strava形式のJSONではありません。Claude Chatで生成したJSONを貼り付けてください。");
+        return;
+      }
+      if (data.activities.length === 0) { setError("アクティビティが0件です。"); return; }
+      onImport(data.activities);
+    } catch(e) {
+      setError("JSON形式が正しくありません。もう一度コピーして貼り付けてください。");
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 200, overflowY: "auto" }}>
+      <div style={{ maxWidth: 430, margin: "0 auto", padding: "24px 20px 80px",
+        fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif", color: "#e2e8f0" }}>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+          <button onClick={onClose} style={{ background: "rgba(30,41,59,0.8)", border: "1px solid rgba(148,163,184,0.1)", color: "#94a3b8", borderRadius: "10px", padding: "8px 14px", cursor: "pointer", fontSize: "14px", fontWeight: "700" }}>✕ 閉じる</button>
+          <div>
+            <div style={{ fontSize: "16px", fontWeight: "800", color: "#f97316" }}>🟠 Stravaから取り込む</div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}>Claude ChatでJSONを生成 → ここに貼り付け</div>
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div style={{ ...cardBase, padding: "14px 16px", marginBottom: "16px", fontSize: "13px", lineHeight: 1.7, color: "#64748b" }}>
+          <div style={{ fontWeight: "700", color: "#f97316", marginBottom: "6px" }}>📋 手順</div>
+          <div>1. Claude Chatで「Stravaのアクティビティを取り込んで」と送信</div>
+          <div>2. 生成されたJSONをコピー</div>
+          <div>3. 下の枠に貼り付けて「取り込む」をタップ</div>
+        </div>
+
+        <textarea
+          value={text}
+          onChange={e => { setText(e.target.value); setError(""); }}
+          placeholder={'{\n  "source": "strava",\n  "activities": [...]\n}'}
+          rows={10}
+          style={{
+            width: "100%", borderRadius: "12px", padding: "12px",
+            background: "rgba(15,23,42,0.8)", border: "1px solid rgba(148,163,184,0.15)",
+            color: "#e2e8f0", fontSize: "13px", fontFamily: "monospace",
+            outline: "none", resize: "vertical", boxSizing: "border-box",
+            marginBottom: "8px",
+          }}
+        />
+        {error && <div style={{ color: "#f87171", fontSize: "13px", marginBottom: "10px" }}>{error}</div>}
+
+        <button onClick={handleImport} disabled={!text.trim()} style={{
+          width: "100%", padding: "15px", borderRadius: "14px", border: "none",
+          background: text.trim() ? "linear-gradient(135deg, #f97316, #ea580c)" : "rgba(30,41,59,0.4)",
+          color: text.trim() ? "#fff" : "#475569",
+          fontSize: "15px", fontWeight: "800", cursor: text.trim() ? "pointer" : "default",
+          boxShadow: text.trim() ? "0 8px 24px rgba(249,115,22,0.3)" : "none",
+        }}>🟠 Stravaデータを取り込む</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard Screen ────────────────────────────────────────────────────────
-function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivity, onEditActivity, onPlan, onViewPlan, onLogout }) {
+function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivity, onImportStrava, onEditActivity, onPlan, onViewPlan, onLogout }) {
   const [period, setPeriod] = useState("weekly");
+  const [showStravaImport, setShowStravaImport] = useState(false);
   const fileRef = useRef(null);
 
   const totalDist  = activities.reduce((s, a) => s + (a.runData?.dist || 0), 0);
@@ -3769,15 +3839,27 @@ function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivi
         )}
 
         {/* Add activity */}
+        {showStravaImport && (
+          <StravaImportModal
+            onImport={acts => { onImportStrava(acts); setShowStravaImport(false); }}
+            onClose={() => setShowStravaImport(false)}
+          />
+        )}
         <input ref={fileRef} type="file" accept=".csv" style={{ display: "none" }}
           onChange={e => { if (e.target.files[0]) { onAddActivity(e.target.files[0]); e.target.value = ""; } }} />
-        <button onClick={() => fileRef.current.click()} style={{
-          width: "100%", padding: "14px", borderRadius: "14px",
-          border: "1px dashed rgba(148,163,184,0.2)", background: "rgba(30,41,59,0.3)",
-          color: "#64748b", fontSize: "14px", fontWeight: "700", cursor: "pointer", marginBottom: "20px",
-        }}>
-          + トレーニングログを追加
-        </button>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
+          <button onClick={() => setShowStravaImport(true)} style={{
+            flex: 1, padding: "13px 8px", borderRadius: "14px",
+            border: "1px solid rgba(249,115,22,0.3)", background: "rgba(249,115,22,0.08)",
+            color: "#f97316", fontSize: "14px", fontWeight: "800", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+          }}>🟠 Stravaから取り込む</button>
+          <button onClick={() => fileRef.current.click()} style={{
+            flex: 1, padding: "13px 8px", borderRadius: "14px",
+            border: "1px dashed rgba(148,163,184,0.2)", background: "rgba(30,41,59,0.3)",
+            color: "#64748b", fontSize: "14px", fontWeight: "700", cursor: "pointer",
+          }}>📄 CSVを追加</button>
+        </div>
 
         {/* Saved plans */}
         {savedPlans && savedPlans.length > 0 && (
@@ -3880,6 +3962,41 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
     setEditingActivity(null);
   }
 
+  function handleImportStrava(stravaActivities) {
+    const raceKeywords = ["trail", "トレイル", "race", "レース", "ultra", "ウルトラ", "marathon", "マラソン"];
+    const newActs = stravaActivities.map((a, i) => {
+      const runData = {
+        title:        a.title || "Stravaアクティビティ",
+        date:         a.date ? a.date.slice(0, 10) : "",
+        dist:         Math.round(a.dist * 100) / 100,
+        durationMins: Math.round(a.durationMins),
+        ascent:       a.ascent || 0,
+        avgHR:        a.avgHR  || 0,
+        maxHR:        a.maxHR  || 0,
+        calories:     a.calories || 0,
+      };
+      const nameHint = (a.title + " " + (a.sportType || "")).toLowerCase();
+      const detectedType = raceKeywords.some(k => nameHint.includes(k)) ? "race" : "training";
+      return {
+        id: Date.now() + i,
+        stravaId: a.stravaId,
+        runData,
+        analysis: computeAnalysis(runData, [], [], runType),
+        nutritionItems: [], symptoms: [], feeling: 3,
+        activityType: a.activityType || detectedType,
+        addedAt: new Date().toISOString(),
+      };
+    });
+    // Skip duplicates (same stravaId already imported)
+    const existingIds = new Set(activities.map(a => a.stravaId).filter(Boolean));
+    const toAdd = newActs.filter(a => !a.stravaId || !existingIds.has(a.stravaId));
+    if (toAdd.length === 0) return;
+    const next = [...activities, ...toAdd];
+    updateActivities(next);
+    // Open the first imported activity for nutrition logging
+    setEditingActivity(toAdd[0]);
+  }
+
   function handleSavePlan(plan) {
     const next = [{ id: Date.now(), ...plan, createdAt: new Date().toISOString() }, ...savedPlans];
     setSavedPlans(next);
@@ -3898,7 +4015,7 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
   );
   return (
     <DashboardScreen profile={profile} runType={runType} activities={activities}
-      savedPlans={savedPlans} onAddActivity={handleAddActivity}
+      savedPlans={savedPlans} onAddActivity={handleAddActivity} onImportStrava={handleImportStrava}
       onEditActivity={setEditingActivity} onPlan={() => setView("plan")}
       onViewPlan={plan => { setViewingPlan(plan); setView("plan"); }}
       onLogout={onLogout} />
