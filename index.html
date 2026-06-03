@@ -2995,6 +2995,7 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
   const [feeling,  setFeeling]    = useState(activity.feeling  || 3);
   const [actType,  setActType]    = useState(activity.activityType || "training");
   const [aidLogs,  setAidLogs]    = useState(activity.aidLogs || []);
+  const [analysisResult, setAnalysisResult] = useState(null);
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [showCustomDrink,   setShowCustomDrink]   = useState(false);
 
@@ -3136,7 +3137,9 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
       ? [...segItems, ...nutritionItems.filter(i => !segItems.find(s => s.id === i.id))]
       : nutritionItems;
     const newAnalysis = computeAnalysis(activity.runData, finalItems, symptoms, runType, actType === "race" ? aidLogs : []);
+    // Save first, then show results
     onSave({ ...activity, nutritionItems: finalItems, segFuel, aidLogs, symptoms, feeling, activityType: actType, analysis: newAnalysis });
+    setAnalysisResult({ analysis: newAnalysis, finalItems, runData: activity.runData });
   }
 
   const FEELING_OPTIONS = [
@@ -3144,6 +3147,125 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
     { val: 3, icon: "😐", label: "普通" },       { val: 4, icon: "😊", label: "良かった" },
     { val: 5, icon: "🤩", label: "最高！" },
   ];
+
+  // ── 診断結果画面 ──────────────────────────────────────────────────────────
+  if (analysisResult) {
+    const { analysis, finalItems, runData } = analysisResult;
+    const hours = runData.durationMins / 60;
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 200, overflowY: "auto" }}>
+        <div style={{ maxWidth: 430, margin: "0 auto", padding: "24px 20px 100px",
+          fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif", color: "#e2e8f0" }}>
+
+          <div style={{ fontSize: "14px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "6px" }}>RESULT</div>
+          <div style={{ fontSize: "22px", fontWeight: "800", color: "#f1f5f9", marginBottom: "4px" }}>診断結果</div>
+          <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "20px" }}>{runData.title || "トレーニングラン"}</div>
+
+          {/* Overall score */}
+          <div style={{ textAlign: "center", padding: "24px 20px 20px", borderRadius: "18px", marginBottom: "16px",
+            background: "linear-gradient(135deg, rgba(30,41,59,0.7), rgba(15,23,42,0.5))",
+            border: "1px solid rgba(148,163,184,0.1)" }}>
+            <div style={{ fontSize: "14px", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "10px" }}>補給スコア</div>
+            <div style={{ fontSize: "72px", fontWeight: "900", letterSpacing: "-3px", lineHeight: 1,
+              background: analysis.overallScore >= 80 ? "linear-gradient(135deg,#4ade80,#22c55e)"
+                : analysis.overallScore >= 55 ? "linear-gradient(135deg,#fbbf24,#f59e0b)"
+                : "linear-gradient(135deg,#f87171,#ef4444)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              {analysis.overallScore}
+            </div>
+            <div style={{ fontSize: "14px", color: "#94a3b8", marginTop: "6px" }}>
+              {analysis.overallScore >= 80 ? "素晴らしい補給！" : analysis.overallScore >= 55 ? "改善の余地あり" : "要大幅改善"}
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "18px" }}>
+              {[
+                { score: analysis.carbScore,   color: "#fbbf24", label: "糖質" },
+                { score: analysis.waterScore,  color: "#60a5fa", label: "水分" },
+                { score: analysis.sodiumScore, color: "#c4b5fd", label: "Na" },
+                { score: analysis.kScore,      color: "#4ade80", label: "K" },
+                { score: analysis.mgScore,     color: "#fb923c", label: "Mg" },
+              ].map(({ score, color, label }) => (
+                <ScoreRing key={label} score={score} color={color} label={label} />
+              ))}
+            </div>
+          </div>
+
+          {/* Run stats */}
+          <div style={{ padding: "10px 14px", borderRadius: "12px", marginBottom: "12px",
+            background: "rgba(30,41,59,0.5)", border: "1px solid rgba(148,163,184,0.06)",
+            display: "flex", gap: "14px", flexWrap: "wrap", fontSize: "14px", color: "#94a3b8" }}>
+            <span>📍 {runData.dist.toFixed(1)}km</span>
+            <span>⏱ {fmt(runData.durationMins)}</span>
+            {runData.ascent > 0 && <span>↑{runData.ascent}m</span>}
+            <span>{["😫","😕","😐","😊","🤩"][feeling - 1]} 体調 {feeling}/5</span>
+          </div>
+
+          {/* Nutrient rate summary */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "16px" }}>
+            {[
+              { label: "糖質/h", val: Math.round(analysis.totalCarbs / hours) + "g", color: "#fbbf24", rec: "60g" },
+              { label: "水分/h", val: Math.round(analysis.totalWater / hours) + "ml", color: "#60a5fa", rec: "500ml" },
+              { label: "Na/h",  val: Math.round(analysis.totalSodium / hours) + "mg", color: "#c4b5fd", rec: "650mg" },
+            ].map(({ label, val, color, rec }) => (
+              <div key={label} style={{ ...cardBase, textAlign: "center", padding: "12px 6px" }}>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>{label}</div>
+                <div style={{ fontSize: "18px", fontWeight: "900", color }}>{val}</div>
+                <div style={{ fontSize: "11px", color: "#334155", marginTop: "2px" }}>推奨 {rec}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Symptom tags */}
+          {symptoms.filter(s => s.id !== "none").length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "14px" }}>
+              {symptoms.filter(s => s.id !== "none").map(s => {
+                const opt = SYMPTOM_OPTIONS.find(o => o.id === s.id);
+                return opt ? (
+                  <div key={s.id} style={{ padding: "4px 10px", borderRadius: "20px",
+                    background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
+                    fontSize: "13px", color: "#fca5a5" }}>
+                    {opt.icon} {opt.label}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          )}
+
+          {/* Insights */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+            {analysis.insights.map((ins, i) => (
+              <div key={i} style={{ padding: "14px 16px", borderRadius: "14px",
+                background: ins.type === "good" ? "rgba(34,197,94,0.08)" : ins.type === "warn" ? "rgba(239,68,68,0.08)" : "rgba(99,102,241,0.08)",
+                border: `1px solid ${ins.type === "good" ? "rgba(34,197,94,0.2)" : ins.type === "warn" ? "rgba(239,68,68,0.2)" : "rgba(99,102,241,0.2)"}`,
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                  <span style={{ fontSize: "20px", lineHeight: 1.3 }}>{ins.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: "#f1f5f9", marginBottom: "4px" }}>{ins.title}</div>
+                    <div style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.6 }}>{ins.detail}</div>
+                    {ins.fix && <div style={{ fontSize: "13px", color: ins.type === "good" ? "#4ade80" : ins.type === "warn" ? "#fca5a5" : "#a5b4fc", marginTop: "6px", lineHeight: 1.6 }}>💡 {ins.fix}</div>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button onClick={() => setAnalysisResult(null)} style={{
+              flex: 1, padding: "14px", borderRadius: "14px", border: "1px solid rgba(148,163,184,0.15)",
+              background: "rgba(30,41,59,0.5)", color: "#94a3b8",
+              fontSize: "14px", fontWeight: "700", cursor: "pointer",
+            }}>← 編集に戻る</button>
+            <button onClick={onClose} style={{
+              flex: 2, padding: "14px", borderRadius: "14px", border: "none",
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              color: "#fff", fontSize: "14px", fontWeight: "800", cursor: "pointer",
+              boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
+            }}>ダッシュボードへ →</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, overflowY: "auto" }}>
