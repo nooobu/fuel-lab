@@ -1895,6 +1895,8 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [planSaved, setPlanSaved] = useState(!!initialPlan);
   const [planName, setPlanName] = useState(initialPlan?.planName ?? "マイプラン");
+  const [raceDate, setRaceDate] = useState(initialPlan?.raceDate ?? "");
+  const [raceNotes, setRaceNotes] = useState(initialPlan?.raceNotes ?? "");
   const [aidStations, setAidStations] = useState(initialPlan?.aidStations ?? []);
   const [aidFoodInput, setAidFoodInput] = useState({});
   const [dropBagInput, setDropBagInput] = useState({});
@@ -2247,17 +2249,41 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
         {tab === "setup" && (
           <>
             <div style={{ fontSize: "14px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "12px" }}>プラン名</div>
-            <div style={{ ...card, padding: "12px 14px", marginBottom: "16px" }}>
+            <div style={{ ...card, padding: "12px 14px", marginBottom: "8px" }}>
               <input
                 value={planName}
                 onChange={e => { setPlanName(e.target.value); setPlanSaved(false); }}
-                placeholder="例: UTMF A7 補給プラン"
+                placeholder="例: Kaga Spa 100"
                 style={{
                   width: "100%", background: "transparent", border: "none", outline: "none",
                   fontSize: "16px", fontWeight: "800", color: "#f1f5f9",
                   fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif",
                 }}
               />
+            </div>
+
+            {/* レース日程 */}
+            <div style={{ ...card, padding: "10px 14px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "16px" }}>📅</span>
+              <input
+                type="date"
+                value={raceDate}
+                onChange={e => { setRaceDate(e.target.value); setPlanSaved(false); }}
+                style={{
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  fontSize: "14px", fontWeight: "700", color: raceDate ? "#a5b4fc" : "#475569",
+                  fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif",
+                  colorScheme: "dark",
+                }}
+              />
+              {raceDate && (() => {
+                const days = Math.ceil((new Date(raceDate) - new Date()) / (1000*60*60*24));
+                return days > 0 ? (
+                  <span style={{ fontSize: "13px", color: days <= 14 ? "#f87171" : days <= 30 ? "#fbbf24" : "#4ade80", fontWeight: "800", flexShrink: 0 }}>
+                    あと{days}日
+                  </span>
+                ) : null;
+              })()}
             </div>
             <div style={{ fontSize: "14px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "12px" }}>次回レース設定</div>
 
@@ -2780,7 +2806,25 @@ function PlanScreen({ user, profile, runType, analysis, runData, onBack, onSaveP
               })()}
             </div>
 
-            <button onClick={() => { onSavePlan({ planName, dist, goalHrs, goalMin, derivedPace, ascent, targetCarbsHr, targetWaterHr, targetSodiumHr, timeline, aidStations }); setPlanSaved(true); }} style={{
+            {/* 戦略メモ */}
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ fontSize: "14px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "10px" }}>📝 戦略メモ</div>
+              <textarea
+                value={raceNotes}
+                onChange={e => { setRaceNotes(e.target.value); setPlanSaved(false); }}
+                placeholder={"コース攻略・補給戦略・前回レースの教訓など...\n\n例:\n- 0-5km ↑438m: スタートの罠。絶対に抑える\n- 40-50km ↑1175m: 核心部。歩いてでも心拍を守る\n- 60km以降: レモン系フレーバー禁止\n- 全エイドで固形食を必ず食べる"}
+                rows={8}
+                style={{
+                  width: "100%", borderRadius: "14px", padding: "14px",
+                  background: "rgba(15,23,42,0.6)", border: "1px solid rgba(148,163,184,0.1)",
+                  color: "#e2e8f0", fontSize: "14px", lineHeight: 1.7,
+                  fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif",
+                  outline: "none", resize: "vertical", boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <button onClick={() => { onSavePlan({ planName, raceDate, raceNotes, dist, goalHrs, goalMin, derivedPace, ascent, targetCarbsHr, targetWaterHr, targetSodiumHr, timeline, aidStations }); setPlanSaved(true); }} style={{
               width: "100%", padding: "14px", borderRadius: "14px", border: "none",
               background: planSaved ? "rgba(34,197,94,0.15)" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
               border: planSaved ? "1px solid rgba(34,197,94,0.3)" : "none",
@@ -3989,33 +4033,70 @@ function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivi
             <div style={{ fontSize: "14px", fontWeight: "700", color: "#64748b", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "12px", marginTop: "8px" }}>
               SAVED PLANS
             </div>
-            {savedPlans.map(plan => (
-              <div key={plan.id} style={{ ...cardBase, marginBottom: "10px", padding: "14px 16px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "14px", fontWeight: "800", color: "#f1f5f9", marginBottom: "3px" }}>
-                      {plan.planName || "プラン"}
+            {[...savedPlans].sort((a, b) => {
+              // Sort: plans with future race dates first
+              if (a.raceDate && b.raceDate) return new Date(a.raceDate) - new Date(b.raceDate);
+              if (a.raceDate) return -1;
+              if (b.raceDate) return 1;
+              return new Date(b.createdAt) - new Date(a.createdAt);
+            }).map(plan => {
+              const daysUntil = plan.raceDate
+                ? Math.ceil((new Date(plan.raceDate) - new Date()) / (1000*60*60*24))
+                : null;
+              const isUpcoming = daysUntil !== null && daysUntil > 0;
+              return (
+                <div key={plan.id} style={{
+                  ...cardBase, marginBottom: "10px", padding: "14px 16px",
+                  borderColor: isUpcoming && daysUntil <= 14 ? "rgba(251,191,36,0.25)" : undefined,
+                  background: isUpcoming && daysUntil <= 14 ? "rgba(251,191,36,0.03)" : undefined,
+                }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                        <div style={{ fontSize: "15px", fontWeight: "800", color: "#f1f5f9" }}>
+                          {plan.planName || "プラン"}
+                        </div>
+                        {isUpcoming && (
+                          <span style={{
+                            fontSize: "12px", fontWeight: "800", padding: "1px 7px", borderRadius: "6px",
+                            background: daysUntil <= 7 ? "rgba(239,68,68,0.15)" : daysUntil <= 14 ? "rgba(251,191,36,0.15)" : "rgba(34,197,94,0.1)",
+                            color: daysUntil <= 7 ? "#f87171" : daysUntil <= 14 ? "#fbbf24" : "#4ade80",
+                            border: `1px solid ${daysUntil <= 7 ? "rgba(239,68,68,0.3)" : daysUntil <= 14 ? "rgba(251,191,36,0.3)" : "rgba(34,197,94,0.2)"}`,
+                          }}>あと{daysUntil}日</span>
+                        )}
+                      </div>
+                      {plan.raceDate && (
+                        <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "3px" }}>
+                          📅 {new Date(plan.raceDate).toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" })}
+                        </div>
+                      )}
+                      <div style={{ fontSize: "13px", color: "#64748b" }}>
+                        {plan.dist}km · {plan.goalHrs ?? "-"}h{plan.goalMin ?? "-"}m · ↑{plan.ascent}m
+                      </div>
+                      <div style={{ fontSize: "13px", color: "#475569", marginTop: "2px" }}>
+                        糖質 {plan.targetCarbsHr}g/hr · Na {plan.targetSodiumHr}mg/hr
+                      </div>
+                      {plan.raceNotes && (
+                        <div style={{ marginTop: "8px", padding: "8px 10px", borderRadius: "8px",
+                          background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.12)",
+                          fontSize: "12px", color: "#64748b", lineHeight: 1.6,
+                          display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+                        }}>
+                          📝 {plan.raceNotes}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontSize: "14px", color: "#64748b" }}>
-                      {plan.dist}km · {plan.goalHrs ?? "-"}h{plan.goalMin ?? "-"}m · ↑{plan.ascent}m
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", flexShrink: 0 }}>
+                      <button onClick={() => onViewPlan(plan)} style={{
+                        background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
+                        color: "#a5b4fc", borderRadius: "8px", padding: "6px 14px",
+                        fontSize: "14px", fontWeight: "700", cursor: "pointer",
+                      }}>開く</button>
                     </div>
-                    <div style={{ fontSize: "14px", color: "#475569", marginTop: "2px" }}>
-                      糖質 {plan.targetCarbsHr}g/hr · Na {plan.targetSodiumHr}mg/hr
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
-                    <div style={{ fontSize: "14px", color: "#334155" }}>
-                      {new Date(plan.createdAt).toLocaleDateString("ja-JP", { month: "short", day: "numeric" })}
-                    </div>
-                    <button onClick={() => onViewPlan(plan)} style={{
-                      background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
-                      color: "#a5b4fc", borderRadius: "8px", padding: "4px 12px",
-                      fontSize: "14px", fontWeight: "700", cursor: "pointer",
-                    }}>開く</button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
 
