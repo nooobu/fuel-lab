@@ -3045,7 +3045,13 @@ function NutritionEditModal({ activity, runType, user, onSave, onClose }) {
   const [feeling,  setFeeling]    = useState(activity.feeling  || 3);
   const [actType,  setActType]    = useState(activity.activityType || "training");
   const [aidLogs,  setAidLogs]    = useState(activity.aidLogs || []);
-  const [analysisResult, setAnalysisResult] = useState(null);
+  // 栄養データ込みで開いた場合は即座に診断結果を表示
+  const [analysisResult, setAnalysisResult] = useState(() => {
+    if (activity.nutritionItems?.length > 0 && activity.analysis) {
+      return { analysis: activity.analysis, finalItems: activity.nutritionItems, runData: activity.runData };
+    }
+    return null;
+  });
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [showCustomDrink,   setShowCustomDrink]   = useState(false);
   const [showMyProductForm, setShowMyProductForm] = useState(false);
