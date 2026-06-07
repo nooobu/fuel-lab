@@ -60,6 +60,8 @@ const PRODUCT_DATABASE = [
   { id:"db_av_perfect",   type:"drink", brand:"アミノバイタル", icon:"💎", name:"アミノバイタル パーフェクトエネルギー",   serving:"1袋 130g", unit:"袋", defaultQty:1, carbs:41, water:100, sodium:16,  k:0,   mg:0,  note:"アミノ酸5000mg配合。スタート直前向け" },
   // バー
   { id:"db_powerbar",     type:"bar",   brand:"PowerBar",      icon:"🍫", name:"パワーバー エナジーバー",                serving:"1本 58g",  unit:"本", defaultQty:1, carbs:42, water:0,   sodium:100, k:100, mg:20, note:"長時間運動向けのバータイプ" },
+  // ドリンクパウダー
+  { id:"db_toprunner",    type:"drink", brand:"Top Runner",    icon:"🏃", name:"Top Runner エレクトロライト",            serving:"1袋 20g + 水500ml", unit:"袋", defaultQty:1, carbs:17, water:500, sodium:314, k:400, mg:50, note:"パラチノース12.5g配合。クエン酸1290mg・ビタミンC215mg・Ca300mg・Zn2.5mg" },
 ];
 
 // ─── Food Items for Timeline (quick-add products + common foods) ─────────────
@@ -77,6 +79,7 @@ const FOOD_ITEMS = [
   { id:"fi_anpan",  icon:"🍞", name:"あんぱん",           unit:"個", defaultQty:1, carbs:45, water:0,   sodium:200, k:90,  mg:15 },
   { id:"fi_chips",  icon:"🥔", name:"ポテトチップス 30g", unit:"袋", defaultQty:1, carbs:15, water:0,   sodium:150, k:80,  mg:10 },
   { id:"fi_salt",   icon:"🧂", name:"塩タブ",             unit:"粒", defaultQty:3, carbs:0,  water:0,   sodium:67,  k:13,  mg:3  },
+  { id:"fi_sports_yokan", icon:"🟤", name:"スポーツようかん", unit:"個", defaultQty:1, carbs:25, water:0, sodium:50, k:20, mg:5 },
   { id:"fi_oshiruko",icon:"🍵",name:"おしるこ",           unit:"個", defaultQty:1, carbs:36, water:100, sodium:80,  k:100, mg:10 },
   // ジェル・ドリンク（PRODUCT_DATABASEから主要品をミラー）
   ...PRODUCT_DATABASE.map(p => ({ ...p, defaultQty: 1 })),
@@ -3033,7 +3036,7 @@ function CustomDrinkModal({ onAdd, onClose }) {
   );
 }
 
-function NutritionEditModal({ activity, runType, onSave, onClose }) {
+function NutritionEditModal({ activity, runType, user, onSave, onClose }) {
   const [nutritionItems, setNutritionItems] = useState(activity.nutritionItems || []);
   const [symptoms, setSymptoms]   = useState(activity.symptoms || []);
   const [feeling,  setFeeling]    = useState(activity.feeling  || 3);
@@ -3042,6 +3045,23 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [showCustomDrink,   setShowCustomDrink]   = useState(false);
+  const [showMyProductForm, setShowMyProductForm] = useState(false);
+
+  // ─── マイ商品（ユーザー別パーソナルDB）─────────────────────────────────────
+  const [myProducts, setMyProducts] = useState(() =>
+    user ? db.load(user.username, "myProducts", []) : []
+  );
+  function saveMyProduct(product) {
+    const item = { ...product, id: `mp_${Date.now()}` };
+    const next = [...myProducts, item];
+    setMyProducts(next);
+    if (user) db.save(user.username, "myProducts", next);
+  }
+  function deleteMyProduct(id) {
+    const next = myProducts.filter(p => p.id !== id);
+    setMyProducts(next);
+    if (user) db.save(user.username, "myProducts", next);
+  }
 
   function addAidLog() {
     const dist = activity.runData?.dist || 0;
@@ -3457,7 +3477,7 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
         )}
 
         {/* Action buttons */}
-        <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
           <button onClick={() => setShowProductSearch(true)} style={{ flex: 1, padding: "11px 8px", borderRadius: "12px", border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)", color: "#a5b4fc", cursor: "pointer", fontSize: "14px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "5px" }}>
             🗃️ 商品から探す
           </button>
@@ -3465,6 +3485,46 @@ function NutritionEditModal({ activity, runType, onSave, onClose }) {
             🧪 カスタムドリンク
           </button>
         </div>
+
+        {/* ─── マイ商品 クイック選択 ─────────────────────────────────────────── */}
+        <div style={{ marginBottom: "14px", padding: "12px 14px", borderRadius: "14px", background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: myProducts.length > 0 ? "8px" : "0" }}>
+            <div style={{ fontSize: "13px", fontWeight: "700", color: "#a5b4fc" }}>⭐ マイ商品</div>
+            <button onClick={() => setShowMyProductForm(true)} style={{ padding: "4px 10px", borderRadius: "8px", border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.1)", color: "#818cf8", cursor: "pointer", fontSize: "12px", fontWeight: "700" }}>＋ 登録</button>
+          </div>
+          {myProducts.length === 0 ? (
+            <div style={{ fontSize: "12px", color: "#475569" }}>よく使う商品を登録しておくとここから素早く追加できます</div>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {myProducts.map(p => {
+                const isAdded = !!nutritionItems.find(i => i.id === p.id);
+                return (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    <div onClick={() => isAdded ? removeProductItem(p.id) : addProductItem(p)} style={{
+                      padding: "5px 10px", borderRadius: "20px", cursor: "pointer",
+                      background: isAdded ? "rgba(99,102,241,0.2)" : "rgba(30,41,59,0.6)",
+                      border: `1px solid ${isAdded ? "rgba(99,102,241,0.45)" : "rgba(148,163,184,0.15)"}`,
+                      fontSize: "13px", fontWeight: "600",
+                      color: isAdded ? "#a5b4fc" : "#94a3b8",
+                    }}>
+                      {p.icon || "🍽"} {p.name} {isAdded && "✓"}
+                    </div>
+                    <span onClick={() => deleteMyProduct(p.id)} style={{ fontSize: "11px", color: "#334155", cursor: "pointer", padding: "2px" }}>×</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* マイ商品登録モーダル */}
+        {showMyProductForm && (
+          <ProductFormModal
+            initial={{}}
+            onSave={item => { saveMyProduct(item); setShowMyProductForm(false); }}
+            onClose={() => setShowMyProductForm(false)}
+          />
+        )}
 
         {/* ─── 区間別補給（レース=AID刻み / トレーニング=5km刻み） ────────────── */}
         {segments.length > 0 && (
@@ -4207,7 +4267,7 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
   }
 
   if (editingActivity) return (
-    <NutritionEditModal activity={editingActivity} runType={runType}
+    <NutritionEditModal activity={editingActivity} runType={runType} user={user}
       onSave={handleSaveActivity} onClose={() => setEditingActivity(null)} />
   );
   if (view === "plan" || viewingPlan) return (
