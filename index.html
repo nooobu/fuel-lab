@@ -62,6 +62,8 @@ const PRODUCT_DATABASE = [
   { id:"db_powerbar",     type:"bar",   brand:"PowerBar",      icon:"🍫", name:"パワーバー エナジーバー",                serving:"1本 58g",  unit:"本", defaultQty:1, carbs:42, water:0,   sodium:100, k:100, mg:20, note:"長時間運動向けのバータイプ" },
   // ドリンクパウダー
   { id:"db_toprunner",    type:"drink", brand:"Top Runner",    icon:"🏃", name:"Top Runner エレクトロライト",            serving:"1袋 20g + 水500ml", unit:"袋", defaultQty:1, carbs:17, water:500, sodium:314, k:400, mg:50, note:"パラチノース12.5g配合。クエン酸1290mg・ビタミンC215mg・Ca300mg・Zn2.5mg" },
+  // 濃縮ドリンク
+  { id:"db_oiena",        type:"drink", brand:"美味しいエナジードリンク研究所", icon:"🫙", name:"おいエナ（濃縮梅飲料）",  serving:"1袋 140g（1:1〜1:10に希釈）", unit:"袋", defaultQty:1, carbs:139, water:0, sodium:13, k:680, mg:34, note:"国産梅×黒糖蜂蜜。水で希釈して使用。K680mg・Mg34mg・高カロリー556kcal" },
 ];
 
 // ─── Food Items for Timeline (quick-add products + common foods) ─────────────
@@ -78,8 +80,9 @@ const FOOD_ITEMS = [
   { id:"fi_manju",  icon:"🍡", name:"まんじゅう",         unit:"個", defaultQty:1, carbs:35, water:0,   sodium:50,  k:30,  mg:5  },
   { id:"fi_anpan",  icon:"🍞", name:"あんぱん",           unit:"個", defaultQty:1, carbs:45, water:0,   sodium:200, k:90,  mg:15 },
   { id:"fi_chips",  icon:"🥔", name:"ポテトチップス 30g", unit:"袋", defaultQty:1, carbs:15, water:0,   sodium:150, k:80,  mg:10 },
-  { id:"fi_salt",   icon:"🧂", name:"塩タブ",             unit:"粒", defaultQty:3, carbs:0,  water:0,   sodium:67,  k:13,  mg:3  },
-  { id:"fi_sports_yokan", icon:"🟤", name:"スポーツようかん", unit:"個", defaultQty:1, carbs:25, water:0, sodium:50, k:20, mg:5 },
+  { id:"fi_salt",          icon:"🧂", name:"塩タブ（汎用）",         unit:"粒", defaultQty:3, carbs:0, water:0, sodium:67,  k:13,  mg:3  },
+  { id:"fi_himalaya_salt", icon:"🧂", name:"ヒマラヤ岩塩タブ",       unit:"粒", defaultQty:1, carbs:0, water:0, sodium:100, k:1,   mg:1  },
+  { id:"fi_sports_yokan",  icon:"🟤", name:"スポーツようかん",        unit:"本", defaultQty:1, carbs:28, water:0, sodium:50,  k:7,   mg:3  },
   { id:"fi_oshiruko",icon:"🍵",name:"おしるこ",           unit:"個", defaultQty:1, carbs:36, water:100, sodium:80,  k:100, mg:10 },
   // ジェル・ドリンク（PRODUCT_DATABASEから主要品をミラー）
   ...PRODUCT_DATABASE.map(p => ({ ...p, defaultQty: 1 })),
