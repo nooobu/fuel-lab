@@ -4230,7 +4230,12 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
 
   function handleImportStrava(stravaActivities) {
     const raceKeywords = ["trail", "トレイル", "race", "レース", "ultra", "ウルトラ", "marathon", "マラソン"];
-    const newActs = stravaActivities.map((a, i) => {
+    const existingMap = {};
+    activities.forEach(a => { if (a.stravaId) existingMap[a.stravaId] = a; });
+
+    const toAdd = [], toUpdate = [];
+
+    stravaActivities.forEach((a, i) => {
       const runData = {
         title:        a.title || "Stravaアクティビティ",
         date:         a.date ? a.date.slice(0, 10) : "",
@@ -4243,24 +4248,44 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
       };
       const nameHint = (a.title + " " + (a.sportType || "")).toLowerCase();
       const detectedType = raceKeywords.some(k => nameHint.includes(k)) ? "race" : "training";
-      return {
-        id: Date.now() + i,
-        stravaId: a.stravaId,
-        runData,
-        analysis: computeAnalysis(runData, [], [], runType),
-        nutritionItems: [], symptoms: [], feeling: 3,
-        activityType: a.activityType || detectedType,
-        addedAt: new Date().toISOString(),
-      };
+
+      // nutritionItems・symptoms・feelingが含まれていればそのまま使う
+      const nutritionItems = Array.isArray(a.nutritionItems) ? a.nutritionItems : [];
+      const symptoms       = Array.isArray(a.symptoms)       ? a.symptoms       : [];
+      const feeling        = a.feeling ?? 3;
+      const activityType   = a.activityType || detectedType;
+      const aidLogs        = Array.isArray(a.aidLogs)        ? a.aidLogs        : [];
+      const analysis       = computeAnalysis(runData, nutritionItems, symptoms, runType, activityType === "race" ? aidLogs : []);
+
+      if (a.stravaId && existingMap[a.stravaId]) {
+        // 既存アクティビティを上書き更新（栄養データがあれば反映）
+        const existing = existingMap[a.stravaId];
+        toUpdate.push({
+          ...existing,
+          runData,
+          activityType,
+          ...(nutritionItems.length > 0 && { nutritionItems, analysis }),
+          ...(symptoms.length       > 0 && { symptoms }),
+          ...(a.feeling !== undefined    && { feeling }),
+          ...(aidLogs.length        > 0 && { aidLogs }),
+        });
+      } else {
+        toAdd.push({
+          id: Date.now() + i,
+          stravaId: a.stravaId,
+          runData, analysis, nutritionItems, symptoms, feeling, activityType, aidLogs,
+          addedAt: new Date().toISOString(),
+        });
+      }
     });
-    // Skip duplicates (same stravaId already imported)
-    const existingIds = new Set(activities.map(a => a.stravaId).filter(Boolean));
-    const toAdd = newActs.filter(a => !a.stravaId || !existingIds.has(a.stravaId));
-    if (toAdd.length === 0) return;
-    const next = [...activities, ...toAdd];
+
+    if (toAdd.length === 0 && toUpdate.length === 0) return;
+    const next = activities
+      .map(a => toUpdate.find(u => u.id === a.id) || a)
+      .concat(toAdd);
     updateActivities(next);
-    // Open the first imported activity for nutrition logging
-    setEditingActivity(toAdd[0]);
+    const first = toUpdate[0] || toAdd[0];
+    if (first) setEditingActivity(first);
   }
 
   function handleSavePlan(plan) {
