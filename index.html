@@ -3965,10 +3965,77 @@ function StravaImportModal({ onImport, onClose }) {
   );
 }
 
+// ─── Plan Import Modal ───────────────────────────────────────────────────────
+function PlanImportModal({ onImport, onClose }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+
+  function handleImport() {
+    setError("");
+    try {
+      const data = JSON.parse(text.trim());
+      const plan = data.source === "fuel-lab-plan" && data.plan ? data.plan : data;
+      if (!plan || typeof plan.dist !== "number") {
+        setError("プラン形式のJSONではありません。Claude Chatで生成したJSONを貼り付けてください。");
+        return;
+      }
+      onImport(plan);
+    } catch (e) {
+      setError("JSON形式が正しくありません。もう一度コピーして貼り付けてください。");
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 200, overflowY: "auto" }}>
+      <div style={{ maxWidth: 430, margin: "0 auto", padding: "24px 20px 80px",
+        fontFamily: "'Noto Sans JP','SF Pro Display',-apple-system,sans-serif", color: "#e2e8f0" }}>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+          <button onClick={onClose} style={{ background: "rgba(30,41,59,0.8)", border: "1px solid rgba(148,163,184,0.1)", color: "#94a3b8", borderRadius: "10px", padding: "8px 14px", cursor: "pointer", fontSize: "14px", fontWeight: "700" }}>✕ 閉じる</button>
+          <div>
+            <div style={{ fontSize: "16px", fontWeight: "800", color: "#818cf8" }}>📋 レースプランを取り込む</div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}>Claude Chatで戦略を作成 → ここに貼り付け</div>
+          </div>
+        </div>
+
+        <div style={{ ...cardBase, padding: "14px 16px", marginBottom: "16px", fontSize: "13px", lineHeight: 1.7, color: "#64748b" }}>
+          <div style={{ fontWeight: "700", color: "#818cf8", marginBottom: "6px" }}>📋 手順</div>
+          <div>1. Claude Chatでレース補給戦略を相談</div>
+          <div>2. 「プランをJSONで出して」と送信</div>
+          <div>3. 下の枠に貼り付けて「取り込む」をタップ</div>
+        </div>
+
+        <textarea
+          value={text}
+          onChange={e => { setText(e.target.value); setError(""); }}
+          placeholder={'{\n  "source": "fuel-lab-plan",\n  "plan": { "planName": "...", "dist": 97.4, ... }\n}'}
+          rows={10}
+          style={{
+            width: "100%", borderRadius: "12px", padding: "12px",
+            background: "rgba(15,23,42,0.8)", border: "1px solid rgba(148,163,184,0.15)",
+            color: "#e2e8f0", fontSize: "13px", fontFamily: "monospace",
+            outline: "none", resize: "vertical", boxSizing: "border-box", marginBottom: "8px",
+          }}
+        />
+        {error && <div style={{ color: "#f87171", fontSize: "13px", marginBottom: "10px" }}>{error}</div>}
+
+        <button onClick={handleImport} disabled={!text.trim()} style={{
+          width: "100%", padding: "15px", borderRadius: "14px", border: "none",
+          background: text.trim() ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "rgba(30,41,59,0.4)",
+          color: text.trim() ? "#fff" : "#475569",
+          fontSize: "15px", fontWeight: "800", cursor: text.trim() ? "pointer" : "default",
+          boxShadow: text.trim() ? "0 8px 24px rgba(99,102,241,0.3)" : "none",
+        }}>📋 プランを取り込む</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard Screen ────────────────────────────────────────────────────────
-function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivity, onImportStrava, onEditActivity, onPlan, onViewPlan, onLogout }) {
+function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivity, onImportStrava, onImportPlan, onEditActivity, onPlan, onViewPlan, onLogout }) {
   const [period, setPeriod] = useState("weekly");
   const [showStravaImport, setShowStravaImport] = useState(false);
+  const [showPlanImport, setShowPlanImport] = useState(false);
   const fileRef = useRef(null);
 
   const totalDist  = activities.reduce((s, a) => s + (a.runData?.dist || 0), 0);
@@ -4171,13 +4238,28 @@ function DashboardScreen({ profile, runType, activities, savedPlans, onAddActivi
           </>
         )}
 
-        {/* Plan CTA */}
-        <button onClick={onPlan} style={{
-          width: "100%", padding: "16px", borderRadius: "14px", border: "none",
-          background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-          color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
-          boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
-        }}>プランを作成する →</button>
+        {/* Plan import modal */}
+        {showPlanImport && (
+          <PlanImportModal
+            onImport={plan => { onImportPlan(plan); setShowPlanImport(false); }}
+            onClose={() => setShowPlanImport(false)}
+          />
+        )}
+
+        {/* Plan CTAs */}
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button onClick={onPlan} style={{
+            flex: 2, padding: "16px", borderRadius: "14px", border: "none",
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+            boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
+          }}>プランを作成する →</button>
+          <button onClick={() => setShowPlanImport(true)} style={{
+            flex: 1, padding: "16px 8px", borderRadius: "14px",
+            border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)",
+            color: "#a5b4fc", fontSize: "14px", fontWeight: "700", cursor: "pointer",
+          }}>📋 取り込む</button>
+        </div>
       </div>
     </div>
   );
@@ -4302,6 +4384,19 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
     db.save(user.username, "plans", next);
   }
 
+  function handleImportPlan(plan) {
+    // Normalize aidStations so each has the fields PlanScreen expects
+    const aidStations = (plan.aidStations || []).map((a, i) => ({
+      id: a.id ?? Date.now() + i,
+      km: a.km ?? 0,
+      foods: a.foods || [],
+      dropBag: a.dropBag || [],
+      restMins: a.restMins ?? 0,
+    }));
+    handleSavePlan({ ...plan, aidStations });
+    setView("dashboard");
+  }
+
   if (editingActivity) return (
     <NutritionEditModal activity={editingActivity} runType={runType} user={user}
       onSave={handleSaveActivity} onClose={() => setEditingActivity(null)} />
@@ -4315,6 +4410,7 @@ function MainAppShell({ user, profile, runType, analysis, runData, onLogout }) {
   return (
     <DashboardScreen profile={profile} runType={runType} activities={activities}
       savedPlans={savedPlans} onAddActivity={handleAddActivity} onImportStrava={handleImportStrava}
+      onImportPlan={handleImportPlan}
       onEditActivity={setEditingActivity} onPlan={() => setView("plan")}
       onViewPlan={plan => { setViewingPlan(plan); setView("plan"); }}
       onLogout={onLogout} />
